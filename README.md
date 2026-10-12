@@ -18,23 +18,19 @@
 
 ## 使い方
 
-```bash
-npm install
-npx playwright install chromium   # URLチェックを使う場合（またはCHROMIUM_PATHで既存のChromiumを指定）
-export ANTHROPIC_API_KEY=sk-ant-...
-npm start
-# → http://localhost:3000
-```
+サーバー不要の静的サイトです（GitHub Pages で無料公開）。
 
-環境変数
+1. [Google AI Studio](https://aistudio.google.com/apikey) で自分の Gemini APIキーを無料発行
+2. 公開ページを開き、APIキーを入力（ブラウザ内にだけ保存され、Google 以外には送信されません）
+3. 画像をアップロード、またはURLを入力してチェック
 
-- `ANTHROPIC_API_KEY`（必須）
-- `CLAUDE_MODEL`（任意、デフォルト `claude-sonnet-5-5`）
-- `CHROMIUM_PATH`（任意、Chromium 実行ファイルのパス）
-- `PORT`（任意、デフォルト 3000）
+- AI: Gemini API（デフォルト `gemini-2.5-flash`。画面上で変更可）
+- URLの画面撮影: [microlink.io](https://microlink.io) の無料API（1日50回まで）
 
-## 仕組み
+## 公開手順（初回のみ）
 
-1. 画像アップロード（貼り付け・ドラッグ可）または URL → Playwright でモバイル/デスクトップ幅のスクリーンショットを撮影
-2. 選んだガイドラインの観点をプロンプトに入れ、画像と一緒に Claude に送る
-3. スコア・良い点・重要度別の改善点（根拠ガイドライン／場所／改善案）を表示
+1. このブランチを `main` にマージ
+2. リポジトリの Settings → Pages → Source を「GitHub Actions」に変更
+3. `main` への push で自動公開 → `https://yusakunagano.github.io/yusakunagano/`
+
+ローカルで試す場合: `python3 -m http.server -d public` → http://localhost:8000
