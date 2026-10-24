@@ -24,11 +24,24 @@
   td,th { padding:8px 10px; border-bottom:1px solid var(--line); text-align:right } td:first-child,th:first-child { text-align:left }
   form.add { display:flex; gap:8px; padding:0 16px 8px; flex-wrap:wrap } input { font:inherit; padding:6px 8px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--fg); }
   dialog { border:none; border-radius:12px; background:var(--card); color:var(--fg); max-width:360px; width:calc(100% - 32px); }
+  .hero { margin:0 16px; padding:16px; border-radius:16px; background:var(--card); border:2px solid var(--accent); }
+  .heroHead { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+  .pick { display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--line); flex-wrap:wrap; }
+  .pick .rank { font-size:22px; font-weight:700; color:var(--accent); width:28px; }
+  .pick .main { flex:1; min-width:160px } .pick .buy { font-size:18px; font-weight:700; }
+  .total { display:flex; justify-content:space-between; padding-top:12px; border-top:2px solid var(--line); font-weight:600; }
   .note { font-size:12px; color:var(--sub); padding:16px; line-height:1.6 }
 </style>
 </head>
 <body>
 <header><h1>株ナビ</h1><span id="mode" class="badge">接続確認中…</span></header>
+
+<section class="hero">
+  <div class="heroHead"><h2 style="margin:0">今買うならこれ</h2>
+    <label class="name">月の予算 <input id="budget" type="number" step="1000" value="50000" style="width:110px"> 円</label></div>
+  <div id="plan"></div>
+  <p class="name" id="planAt"></p>
+</section>
 
 <h2>マーケット</h2><div id="market" class="grid"></div>
 
@@ -40,13 +53,13 @@
 
 <dialog id="dlg"><form method="dialog" id="orderForm">
   <h3 id="dlgTitle" style="margin-top:0"></h3>
-  <p><label>数量 <input name="qty" type="number" min="1" value="100" required></label></p>
+  <p><label>数量 <input name="qty" type="number" min="1" value="1" required></label></p>
   <p><label>指値 (空欄で成行) <input name="price" type="number" step="0.1"></label></p>
   <p class="name">注文内容をよく確認してください。投資判断はご自身の責任で行ってください。</p>
   <div style="display:flex;gap:8px;justify-content:flex-end"><button value="cancel" formnovalidate>キャンセル</button><button class="primary" value="ok">注文を確定</button></div>
 </form></dialog>
 
-<p class="note">※ 表示されるシグナルは移動平均・RSI による機械的な目安で、売買を推奨するものではありません。株価データは遅延・欠損することがあります。</p>
+<p class="note">※ 提案は直近20日の値動きの傾き・移動平均・RSI から機械的に計算した目安です。株価の将来を当てるものではなく、損失が出ることもあります。株価データは遅延・欠損することがあります。</p>
 
 <script>
 const $ = (s) => document.querySelector(s);
@@ -81,7 +94,24 @@ async function api(path, opts) {
   const j = await r.json(); if (!r.ok) throw new Error(j.error); return j;
 }
 
+async function loadPlan() {
+  const b = Number($("#budget").value) || 50000;
+  const r = await api(`/api/suggest?budget=${b}`);
+  if (!r.plan.length) { $("#plan").innerHTML = `<p>今は条件に合う銘柄がありません。買わずに待つのも選択肢です。</p>`; }
+  else $("#plan").innerHTML = r.plan.map((p, i) => `<div class="pick">
+      <div class="rank">${i + 1}</div>
+      <div class="main"><div class="buy">${esc(p.name)} を ${p.qty}株</div>
+        <div class="name">${esc(p.symbol)} · 現在 ${yen(p.price)}円 · 5日後の目安 ${yen(p.forecast)}円 (<span class="${p.expected >= 0 ? "up" : "down"}">${p.expected >= 0 ? "+" : ""}${p.expected.toFixed(1)}%</span>)</div>
+        <div class="name">${p.reasons.map(esc).join(" / ") || "直近の上昇トレンド"}</div></div>
+      <div style="text-align:right"><div class="buy">${yen(Math.round(p.cost))}円</div>
+        <button class="primary" data-act="buy" data-sym="${esc(p.symbol)}" data-name="${esc(p.name)}" data-qty="${p.qty}">この内容で買う</button></div>
+    </div>`).join("") + `<div class="total"><span>合計 ${yen(Math.round(r.budget - r.rest))}円</span><span class="name">残り ${yen(r.rest)}円</span></div>`;
+  $("#planAt").textContent = `${new Date(r.at).toLocaleTimeString("ja-JP")} 更新${r.demo ? "（ダミーデータ）" : ""} · 1分ごとに自動更新 · 1株単位で買える前提（マネックス証券の「ワン株」など）`;
+}
+$("#budget").addEventListener("change", loadPlan);
+
 async function load() {
+  loadPlan();
   const st = await api("/api/status");
   $("#mode").textContent = st.demo ? "デモモード (MCP 未接続)" : "証券会社 MCP 接続中";
   const [m, w, p] = await Promise.all([api("/api/market"), api("/api/watchlist"), api("/api/portfolio")]);
@@ -99,6 +129,7 @@ document.addEventListener("click", async (e) => {
   if (b.dataset.act === "del") { await api(`/api/watchlist/${encodeURIComponent(b.dataset.sym)}`, { method: "DELETE" }); return load(); }
   orderTarget = { symbol: b.dataset.sym, side: b.dataset.act };
   $("#dlgTitle").textContent = `${b.dataset.name} を${b.dataset.act === "buy" ? "買う" : "売る"}`;
+  $("#orderForm").qty.value = b.dataset.qty || 1;
   $("#dlg").showModal();
 });
 

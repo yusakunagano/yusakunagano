@@ -56,3 +56,19 @@ export function analyze(series) {
   const signal = score >= 1 ? "注目" : score <= -1 ? "過熱注意" : "様子見";
   return { last, change: ((last - prev) / prev) * 100, sma5: s5, sma25: s25, rsi: r, signal, reasons };
 }
+
+// 直近20日の回帰直線を5営業日先に延ばした値。予言ではなくトレンドの延長。
+export function trendForecast(closes, n = 20, ahead = 5) {
+  const y = closes.slice(-n), xm = (n - 1) / 2, ym = y.reduce((a, b) => a + b, 0) / n;
+  let num = 0, den = 0;
+  y.forEach((v, i) => { num += (i - xm) * (v - ym); den += (i - xm) ** 2; });
+  const slope = num / den;
+  return ym + slope * (n - 1 - xm + ahead);
+}
+
+// 日次リターンの標準偏差 (値動きの荒さ)
+export function volatility(closes, n = 20) {
+  const r = closes.slice(-n - 1).map((v, i, a) => (i ? v / a[i - 1] - 1 : 0)).slice(1);
+  const m = r.reduce((a, b) => a + b, 0) / r.length;
+  return Math.sqrt(r.reduce((a, b) => a + (b - m) ** 2, 0) / r.length);
+}
