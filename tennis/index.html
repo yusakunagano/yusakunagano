@@ -6,6 +6,11 @@
 <title>テニス組み合わせ</title>
 <style>
   :root { --main:#2e7d32; --bg:#f4f7f4; --card:#fff; --text:#222; --muted:#777; --done:#e0e0e0; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --main:#66bb6a; --bg:#121512; --card:#1e221e; --text:#e8e8e8; --muted:#9a9a9a; --done:#2a2e2a; } }
+  :root[data-theme="dark"] { --main:#66bb6a; --bg:#121512; --card:#1e221e; --text:#e8e8e8; --muted:#9a9a9a; --done:#2a2e2a; }
+  nav, nav button { background:var(--card) !important; color:var(--text); }
+  input, select { background:var(--card); color:var(--text); }
+  .btn.sub { background:var(--card) !important; }
   * { box-sizing:border-box; }
   body { margin:0; font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif; background:var(--bg); color:var(--text); }
   header { background:var(--main); color:#fff; padding:14px 16px; font-size:1.2rem; font-weight:bold; }
