@@ -1,0 +1,98 @@
+<title>Pulse Garden</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* full-bleed canvas + floating control bar, one deliberate dark look */
+:root{--bg:#07060c;--fg:#f3eefe;--muted:#a59fbf;--chip:rgba(255,255,255,.08);--line:rgba(255,255,255,.18);--on:#ff4fa3;color-scheme:dark}
+html,body{height:100%;margin:0;background:var(--bg);overflow:hidden;color:var(--fg);font:13px/1.4 "Zen Kaku Gothic New",system-ui,sans-serif}
+canvas{display:block;width:100%;height:100%}
+.bar{position:fixed;left:0;right:0;bottom:0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+ padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
+ background:linear-gradient(transparent,rgba(7,6,12,.85))}
+button,label.btn{appearance:none;border:1px solid var(--line);background:var(--chip);color:var(--fg);border-radius:999px;padding:8px 14px;font:inherit;cursor:pointer}
+button:focus-visible,label.btn:focus-within{outline:2px solid var(--on);outline-offset:2px}
+button.on{border-color:var(--on);background:rgba(255,79,163,.2)}
+#file{position:absolute;opacity:0;width:1px;height:1px}
+#st{color:var(--muted);font-variant-numeric:tabular-nums;min-width:0;flex:1 1 200px}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500&display=swap">
+<canvas id="c"></canvas>
+<div class="bar">
+ <button id="mic" type="button">🎤 マイクで外の音に反応</button>
+ <label class="btn">♪ 音楽ファイルを読み込む<input id="file" type="file" accept="audio/*"></label>
+ <button id="tap" type="button">タップでテンポ指定</button>
+ <span id="st">オートモード 120 BPM</span>
+</div>
+<audio id="au" loop hidden></audio>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d'),st=document.getElementById('st');
+let W,H,dpr,t=0,hue=0;
+function rs(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;c.width=W*dpr;c.height=H*dpr;x.setTransform(dpr,0,0,dpr,0,0)}
+addEventListener('resize',rs);rs();
+
+/* ---------- audio ---------- */
+let ac,an,buf,src=null,mode='auto',bpm=120,lastAuto=0,taps=[];
+let bass=0,mid=0,high=0,avg=0,lastBeat=0;
+function ensureCtx(){if(!ac){ac=new (window.AudioContext||window.webkitAudioContext)();an=ac.createAnalyser();an.fftSize=1024;an.smoothingTimeConstant=.6;buf=new Uint8Array(an.frequencyBinCount)}ac.resume()}
+function setSrc(node,toOut){if(src)try{src.disconnect()}catch(e){}src=node;node.connect(an);if(toOut)an.connect(ac.destination);else try{an.disconnect(ac.destination)}catch(e){}}
+const micB=document.getElementById('mic');
+micB.onclick=async()=>{
+ try{ensureCtx();const s=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:true}});
+  setSrc(ac.createMediaStreamSource(s),false);mode='audio';micB.classList.add('on');st.textContent='マイク入力中：周りの音に反応しています';}
+ catch(e){st.textContent='この画面ではマイクを使えません。音楽ファイルを読み込むか、ダウンロードしたHTMLをブラウザで直接開いてください';}
+};
+const au=document.getElementById('au');let elSrc=null;
+document.getElementById('file').onchange=e=>{const f=e.target.files[0];if(!f)return;ensureCtx();
+ au.src=URL.createObjectURL(f);if(!elSrc)elSrc=ac.createMediaElementSource(au);setSrc(elSrc,true);au.play();mode='audio';st.textContent='再生中：'+f.name};
+document.getElementById('tap').onclick=()=>{const n=performance.now();taps=taps.filter(v=>n-v<3000);taps.push(n);
+ if(taps.length>1){bpm=Math.round(60000/((taps.at(-1)-taps[0])/(taps.length-1)));bpm=Math.max(50,Math.min(220,bpm))}
+ if(mode!=='audio'){mode='auto';st.textContent='オートモード '+bpm+' BPM'}beat(1)};
+
+function band(a,b){let s=0;for(let i=a;i<b;i++)s+=buf[i];return s/(b-a)/255}
+function analyse(now){
+ if(mode==='audio'&&an){an.getByteFrequencyData(buf);bass=band(1,8);mid=band(8,60);high=band(60,200);
+  avg=avg*.95+bass*.05;if(bass>avg*1.25&&bass>.3&&now-lastBeat>220){lastBeat=now;beat(bass)}}
+ else{const p=60000/bpm;const ph=(now%p)/p;bass=Math.pow(1-ph,3);mid=.3+.2*Math.sin(now/700);high=.2+.2*Math.sin(now/310);
+  if(now-lastAuto>p){lastAuto=now-(now%p);beat(1)}}
+}
+
+/* ---------- motifs ---------- */
+const kinds=['ring','star','tri','square','flower','wave','dots','heart'];
+let items=[],bursts=[];
+function rnd(a,b){return a+Math.random()*(b-a)}
+function spawn(n=1,pow=1){for(let i=0;i<n;i++)items.push({k:kinds[Math.random()*kinds.length|0],x:rnd(0,W),y:rnd(0,H),
+ r:rnd(18,70)*(.6+pow*.6),h:(hue+rnd(0,240))%360,rot:rnd(0,6.28),vr:rnd(-.03,.03),vx:rnd(-1,1),vy:rnd(-1,1),life:1,decay:rnd(.003,.008)})}
+function beat(p){hue=(hue+37)%360;spawn(3+(p*4|0),p);bursts.push({x:W/2+rnd(-W/4,W/4),y:H/2+rnd(-H/4,H/4),r:0,h:hue,a:1});if(items.length>140)items.splice(0,items.length-140)}
+spawn(30,.6);
+
+function shape(o,s){const r=o.r*s;x.beginPath();
+ switch(o.k){
+ case'ring':x.arc(0,0,r,0,7);x.moveTo(r*.55,0);x.arc(0,0,r*.55,0,7);break;
+ case'star':for(let i=0;i<10;i++){const a=i*Math.PI/5,rr=i%2?r*.45:r;x.lineTo(Math.cos(a)*rr,Math.sin(a)*rr)}x.closePath();break;
+ case'tri':for(let i=0;i<3;i++){const a=i*2.094-1.57;x.lineTo(Math.cos(a)*r,Math.sin(a)*r)}x.closePath();break;
+ case'square':x.rect(-r*.7,-r*.7,r*1.4,r*1.4);break;
+ case'flower':for(let i=0;i<6;i++){const a=i*1.047;x.moveTo(0,0);x.ellipse(Math.cos(a)*r*.5,Math.sin(a)*r*.5,r*.5,r*.2,a,0,7)}break;
+ case'wave':for(let i=-10;i<=10;i++){x.lineTo(i*r/10,Math.sin(i*.8+t*6)*r*.35)}break;
+ case'dots':for(let i=0;i<8;i++){const a=i*.785;x.moveTo(Math.cos(a)*r+r*.15,Math.sin(a)*r);x.arc(Math.cos(a)*r,Math.sin(a)*r,r*.15,0,7)}break;
+ case'heart':x.moveTo(0,r*.6);x.bezierCurveTo(r*1.2,-r*.2,r*.5,-r*1.1,0,-r*.35);x.bezierCurveTo(-r*.5,-r*1.1,-r*1.2,-r*.2,0,r*.6);break;}
+}
+const still=matchMedia('(prefers-reduced-motion: reduce)').matches;
+function frame(now){t=now/1000;analyse(now);
+ x.globalCompositeOperation='source-over';x.fillStyle=`rgba(7,6,12,${.18+.1*(1-bass)})`;x.fillRect(0,0,W,H);
+ x.globalCompositeOperation='lighter';
+ // background radial bars (spectrum feel)
+ const N=72,cx=W/2,cy=H/2,R=Math.min(W,H)*.18;
+ for(let i=0;i<N;i++){const a=i/N*6.283+t*.1;const v=(mode==='audio'&&buf?buf[2+i*2]/255:.3+.3*Math.sin(i*.5+t*3)*bass);
+  const L=R*(.3+v*1.6);x.strokeStyle=`hsla(${(hue+i*5)%360},100%,60%,.5)`;x.lineWidth=3;x.beginPath();
+  x.moveTo(cx+Math.cos(a)*R,cy+Math.sin(a)*R);x.lineTo(cx+Math.cos(a)*(R+L),cy+Math.sin(a)*(R+L));x.stroke()}
+ for(const b of bursts){b.r+=8+bass*20;b.a*=.94;x.strokeStyle=`hsla(${b.h},100%,65%,${b.a})`;x.lineWidth=4*b.a+1;x.beginPath();x.arc(b.x,b.y,b.r,0,7);x.stroke()}
+ bursts=bursts.filter(b=>b.a>.03);
+ for(const o of items){o.x+=o.vx*(1+mid*4);o.y+=o.vy*(1+mid*4);o.rot+=o.vr*(1+high*6);o.life-=o.decay;
+  if(o.x<-80)o.x=W+80;if(o.x>W+80)o.x=-80;if(o.y<-80)o.y=H+80;if(o.y>H+80)o.y=-80;
+  const s=1+bass*.7;x.save();x.translate(o.x,o.y);x.rotate(o.rot);
+  const col=`hsla(${(o.h+t*20)%360},95%,${55+high*20}%,${Math.min(1,o.life)*.85})`;
+  shape(o,s);if(o.k==='wave'||o.k==='ring'){x.strokeStyle=col;x.lineWidth=3;x.stroke()}else{x.fillStyle=col;x.fill()}
+  x.restore()}
+ items=items.filter(o=>o.life>0);if(items.length<25)spawn(2,.5);
+ if(!still)requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+</script>
