@@ -279,7 +279,7 @@ function serve(p){
     if (keys['arrowright'] || keys['d']) tx = boxX > 0 ? W - 0.5 : -0.5;
     if (Math.random() < 0.12) ty -= s * 0.9;
   }
-  ball.x = p.x; ball.y = p.y; ball.z = 2.6;
+  ball.z = Math.max(ball.z, 2.4);
   const dist = Math.hypot(tx - ball.x, ty - ball.y);
   Object.assign(ball, launch(ball.x, ball.y, ball.z, tx, ty, dist / 26));
   ball.live = true; lastHitter = p; hitFrom = { x: p.x, y: p.y }; bounces = 0; isServe = true;
@@ -313,7 +313,7 @@ function fault(reason){
   showMsg('フォルト（' + reason + '）', 1.2);
   pendingSecondServe = true;
 }
-let pendingSecondServe = false, hitFrom = null;
+let pendingSecondServe = false, hitFrom = null, tossing = false;
 
 function inCourt(x, y, team){ // does (x,y) lie in team's court half?
   const W = mode === 'doubles' ? DW : SW;
@@ -383,7 +383,7 @@ function update(dt){
     p.cool -= dt; p.swing -= dt; p.label = (p.label || 0) - dt; p.st = (p.st ?? 9) + dt;
     // 打つ前の準備動作（テイクバック）
     let target = 0;
-    if (state === 'serve' && p === servingPlayer()) { target = 1; p.prepType = 'sm'; }
+    if (state === 'serve' && p === servingPlayer()) { target = tossing ? 1 : 0; p.prepType = 'sm'; }
     else if (state === 'rally' && lastHitter && lastHitter.team !== p.team && !(isServe && bounces === 0 && false) && p.st > 0.5) {
       const d = Math.hypot(ball.x - p.x, ball.y - p.y);
       const coming = (ball.y - p.y) * ball.vy < 0 || d < 1.6;
@@ -397,11 +397,20 @@ function update(dt){
   }
 
   if (state === 'serve') {
-    const sp = servingPlayer();
-    ball.x = sp.x + 0.3 * sideSign(sp.team); ball.y = sp.y; ball.z = 1.0;
+    const sp = servingPlayer(), sg = sideSign(sp.team);
     timer += dt;
     aiMove(dt);
-    if (sp.isHuman ? serveRequest : timer > 1.1) serve(sp);
+    if (!tossing) {
+      // 左手にボールを持って構える
+      ball.x = sp.x - 0.2 * sg; ball.y = sp.y - sg * 0.35; ball.z = 1.0; ball.vx = ball.vy = ball.vz = 0;
+      if (sp.isHuman ? serveRequest : timer > 1.1) {
+        // トス：右肩の少し前へ真上に投げ上げる
+        tossing = true; showMsg('', 0); ball.vz = 5.6; ball.vx = (0.25 * sg) / 0.57; ball.vy = 0;
+      }
+    } else {
+      ball.x += ball.vx * dt; ball.vz -= G * dt; ball.z += ball.vz * dt;
+      if (ball.vz <= 0) { tossing = false; serve(sp); }
+    }
     serveRequest = false;
     return;
   }
@@ -566,21 +575,21 @@ function shade(cx, cy, r){
 }
 const READY = { h: [0.05, 0.38, 0.95], r: [0, 0.45, 0.4], l: 'grip' };
 const POSES = {
-  fs: { back: { h: [0.65, -0.45, 1.0], r: [0.15, -0.65, 0.15], l: [0.05, 0.45, 1.05] },
-        hit:  { h: [0.55, 0.3, 0.9], r: [0.65, 0.1, 0.0], l: [-0.35, 0.35, 1.0] },
-        fol:  { h: [-0.3, 0.25, 1.55], r: [-0.25, -0.3, 0.4], l: [-0.4, 0.0, 1.0] } },
-  bs: { back: { h: [-0.6, -0.4, 0.95], r: [-0.15, -0.65, 0.15], l: 'grip' },
-        hit:  { h: [-0.4, 0.35, 0.9], r: [-0.65, 0.1, 0.0], l: 'grip' },
-        fol:  { h: [0.35, 0.15, 1.55], r: [0.25, -0.3, 0.4], l: 'grip' } },
-  fv: { back: { h: [0.55, 0.05, 1.2], r: [0.1, 0.0, 0.6], l: [-0.1, 0.45, 1.1] },
-        hit:  { h: [0.5, 0.5, 1.15], r: [0.25, 0.35, 0.45], l: [-0.3, 0.3, 1.0] },
-        fol:  { h: [0.42, 0.6, 1.05], r: [0.2, 0.4, 0.4], l: [-0.35, 0.2, 0.95] } },
-  bv: { back: { h: [-0.5, 0.05, 1.2], r: [-0.1, 0.0, 0.6], l: [-0.35, 0.1, 1.25] },
-        hit:  { h: [-0.45, 0.5, 1.15], r: [-0.25, 0.35, 0.45], l: [0.1, -0.1, 1.0] },
-        fol:  { h: [-0.35, 0.6, 1.05], r: [-0.2, 0.4, 0.4], l: [0.3, -0.15, 0.95] } },
-  sm: { back: { h: [0.4, -0.25, 1.65], r: [0.0, -0.35, -0.45], l: [-0.15, 0.25, 2.15] },
-        hit:  { h: [0.25, 0.25, 2.3], r: [0.05, 0.3, 0.6], l: [-0.35, 0.1, 1.3] },
-        fol:  { h: [-0.3, 0.4, 0.8], r: [-0.3, 0.25, -0.5], l: [-0.4, -0.1, 1.0] } },
+  fs: { back: { tw: 0.95, h: [0.65, -0.45, 1.0], r: [0.15, -0.65, 0.15], l: [0.05, 0.45, 1.05] },
+        hit:  { tw: 0.1, h: [0.55, 0.3, 0.9], r: [0.65, 0.1, 0.0], l: [-0.35, 0.35, 1.0] },
+        fol:  { tw: -0.7, h: [-0.3, 0.25, 1.55], r: [-0.25, -0.3, 0.4], l: [-0.4, 0.0, 1.0] } },
+  bs: { back: { tw: -1.0, h: [-0.6, -0.4, 0.95], r: [-0.15, -0.65, 0.15], l: 'grip' },
+        hit:  { tw: -0.1, h: [-0.4, 0.35, 0.9], r: [-0.65, 0.1, 0.0], l: 'grip' },
+        fol:  { tw: 0.6, h: [0.35, 0.15, 1.55], r: [0.25, -0.3, 0.4], l: 'grip' } },
+  fv: { back: { tw: 0.4, h: [0.55, 0.05, 1.2], r: [0.1, 0.0, 0.6], l: [-0.1, 0.45, 1.1] },
+        hit:  { tw: 0.1, h: [0.5, 0.5, 1.15], r: [0.25, 0.35, 0.45], l: [-0.3, 0.3, 1.0] },
+        fol:  { tw: 0.0, h: [0.42, 0.6, 1.05], r: [0.2, 0.4, 0.4], l: [-0.35, 0.2, 0.95] } },
+  bv: { back: { tw: -0.5, h: [-0.5, 0.05, 1.2], r: [-0.1, 0.0, 0.6], l: [-0.35, 0.1, 1.25] },
+        hit:  { tw: -0.1, h: [-0.45, 0.5, 1.15], r: [-0.25, 0.35, 0.45], l: [0.1, -0.1, 1.0] },
+        fol:  { tw: 0.0, h: [-0.35, 0.6, 1.05], r: [-0.2, 0.4, 0.4], l: [0.3, -0.15, 0.95] } },
+  sm: { back: { tw: 0.8, h: [0.4, -0.25, 1.65], r: [0.0, -0.35, -0.45], l: [-0.15, 0.25, 2.15] },
+        hit:  { tw: 0.0, h: [0.25, 0.25, 2.3], r: [0.05, 0.3, 0.6], l: [-0.35, 0.1, 1.3] },
+        fol:  { tw: -0.55, h: [-0.3, 0.4, 0.8], r: [-0.3, 0.25, -0.5], l: [-0.4, -0.1, 1.0] } },
 };
 const SHOT_NAME = { fs: 'フォアストローク', bs: 'バックストローク', fv: 'フォアボレー', bv: 'バックボレー', sm: 'スマッシュ' };
 function lerp3(a, b, t){ return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
@@ -588,7 +597,7 @@ function lerpPose(A, B, t){
   t = Math.max(0, Math.min(1, t)); t = t * t * (3 - 2 * t);
   const gl = (P0) => P0.l === 'grip' ? [P0.h[0] - 0.02, P0.h[1] - 0.04, P0.h[2] - 0.1] : P0.l;
   const l = (A.l === 'grip' && B.l === 'grip') ? 'grip' : lerp3(gl(A), gl(B), t);
-  return { h: lerp3(A.h, B.h, t), r: lerp3(A.r, B.r, t), l };
+  return { h: lerp3(A.h, B.h, t), r: lerp3(A.r, B.r, t), l, tw: (A.tw || 0) + ((B.tw || 0) - (A.tw || 0)) * t };
 }
 function drawPlayer(p){
   const [x, y, f0] = P(p.x, p.y); curF = f0;
@@ -628,9 +637,10 @@ function drawPlayer(p){
     const a = Math.sin(ph) * mv;
     pose = { h: [0.38, a * 0.35, 0.85], r: [0.08, 0.2 + a * 0.2, -0.35], l: [-0.38, -a * 0.35, 0.85] };
   } else pose = READY;
+  const twist = pose.tw || 0, twc = Math.cos(twist), tws = Math.sin(twist);
   const lh = pose.l === 'grip' ? [pose.h[0] - 0.02, pose.h[1] - 0.04, pose.h[2] - 0.1] : pose.l;
   const armDraw = (shA, hand) => () => {
-    const sh = [shA, 0, 1.25];
+    const sh = [shA * twc, -shA * tws, 1.25];
     const el = [(sh[0] + hand[0]) / 2 + Math.sign(shA) * 0.12, (sh[1] + hand[1]) / 2 - 0.05, (sh[2] + hand[2]) / 2 - 0.12];
     line([toS(sh), toS(el), toS(hand)], armW, skin);
     ctx.fillStyle = skin; const [hx, hy] = toS(hand); ctx.beginPath(); ctx.arc(hx, hy, armW * 0.6, 0, 7); ctx.fill();
@@ -669,8 +679,14 @@ function drawPlayer(p){
   ctx.beginPath(); ctx.ellipse(x, hipY - S(0.02), S(0.27 * (1 - 0.25 * Math.abs(ys))), S(0.14), 0, 0, Math.PI * 2); ctx.fill();
   // 胴体（立体感のグラデーション）
   ctx.fillStyle = p.color;
-  ctx.beginPath(); ctx.ellipse(x, bodyY, S(0.34 * (1 - 0.28 * Math.abs(ys))), S(0.4), -yaw * rs * 0.15, 0, Math.PI * 2); ctx.fill();
+  const tot = yaw + twist * 0.8, ts = Math.abs(Math.sin(tot));
+  ctx.beginPath(); ctx.ellipse(x, bodyY, S(0.34 * (1 - 0.3 * ts)), S(0.4), -tot * rs * 0.15, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = shade(x, bodyY, S(0.4)); ctx.fill();
+  // 肩のライン（体のひねりが分かるように）
+  { const L = toS([-0.3 * twc, 0.3 * tws, 1.25]), R = toS([0.3 * twc, -0.3 * tws, 1.25]);
+    line([L, R], S(0.13), 'rgba(0,0,0,.28)');
+    ctx.fillStyle = 'rgba(255,255,255,.35)'; const near = (fromBack ? (0.3 * tws) : (-0.3 * tws)) < 0 ? L : R;
+    ctx.beginPath(); ctx.arc(near[0], near[1], S(0.09), 0, 7); ctx.fill(); }
   // 頭
   ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(x, headY, S(0.24), 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#3b2a1e';
