@@ -330,6 +330,11 @@ function update(dt){
   }
   clampSide(human);
 
+  for (const p of players) {
+    const d = Math.hypot(p.x - (p.px ?? p.x), p.y - (p.py ?? p.y));
+    p.px = p.x; p.py = p.y;
+    if (d < 0.5) { p.walk = (p.walk || 0) + d * 4.2; p.mv = (p.mv || 0) * 0.9 + (d / dt > 0.5 ? 1 : 0) * 0.1; }
+  }
   for (const p of players) { p.cool -= dt; p.swing -= dt; p.label = (p.label || 0) - dt; }
 
   if (state === 'serve') {
@@ -487,10 +492,24 @@ function drawPlayer(p){
   const x = sx(p.x), y = sy(p.y);
   ctx.fillStyle = 'rgba(0,0,0,.3)';
   ctx.beginPath(); ctx.ellipse(x, y, S(0.5), S(0.22), 0, 0, Math.PI * 2); ctx.fill();
+  // 脚（歩行アニメーション）
+  const ph = p.walk || 0, mv = p.mv || 0;
+  const stride = Math.sin(ph) * S(0.22) * mv, lift = S(0.08) * mv;
+  const hipY = y - S(0.6);
+  ctx.strokeStyle = '#222'; ctx.lineCap = 'round'; ctx.lineWidth = S(0.13);
+  for (const [lx, k] of [[-0.14, 1], [0.14, -1]]) {
+    const fy = y + stride * k - Math.max(0, Math.sin(ph) * k) * lift;
+    const kneeY = (hipY + fy) / 2 - Math.abs(stride) * 0.15;
+    ctx.beginPath(); ctx.moveTo(x + S(lx * 0.8), hipY); ctx.lineTo(x + S(lx), kneeY); ctx.lineTo(x + S(lx), fy); ctx.stroke();
+    ctx.fillStyle = '#fafafa';
+    ctx.beginPath(); ctx.ellipse(x + S(lx), fy, S(0.1), S(0.07), 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.lineCap = 'butt';
+  const bob = Math.abs(Math.sin(ph)) * S(0.05) * mv;
   ctx.fillStyle = p.color;
-  ctx.beginPath(); ctx.ellipse(x, y - S(0.7), S(0.35), S(0.6), 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x, y - S(0.95) - bob, S(0.33), S(0.42), 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#f3c9a0';
-  ctx.beginPath(); ctx.arc(x, y - S(1.45), S(0.25), 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y - S(1.6) - bob, S(0.24), 0, Math.PI * 2); ctx.fill();
   // racket
   // right-handed: forehand on player's right, backhand on left
   if (p.swing <= -0.3) {
@@ -525,7 +544,7 @@ function drawPlayer(p){
     ctx.fillText(t, x, ly);
     ctx.globalAlpha = 1;
   }
-  if (p.isHuman) { ctx.fillStyle = '#fff'; ctx.font = `bold ${S(0.55)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('YOU', x, y - S(1.9)); }
+  if (p.isHuman) { ctx.fillStyle = '#fff'; ctx.font = `bold ${S(0.55)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('YOU', x, y - S(2.05)); }
 }
 function drawBall(){
   if (!ball) return;
