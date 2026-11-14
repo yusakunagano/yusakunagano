@@ -152,7 +152,7 @@ const joy = { active: false, x: 0, y: 0, id: null };
 // team 0 = player side (bottom, y>0), team 1 = CPU (top, y<0)
 let players = [], ball, state = 'menu', timer = 0;
 let score, server, serveSide, faults, lastHitter, bounces, isServe, rallyHits, human;
-const SPEED = [3.7, 4.2, 4.8];
+const SPEED = [3.3, 3.8, 4.3];
 
 function mkPlayer(team, role, isHuman, color){
   return { team, role, isHuman, color, x: 0, y: 0, hx: 0, hy: 0, cool: 0, swing: 0 };
@@ -219,7 +219,7 @@ function hit(p){
   const contact = Math.hypot(ball.x - p.x, ball.y - p.y);
   let jam = Math.max(0, (0.6 - contact) / 0.6); // 近すぎて詰まった度合い
   const vsSmash = !!ball.smash;
-  const isSmash = ball.z > 2.5; // 2.5m未満の高めの球はハイボレーにする
+  const isSmash = ball.z > 2.9; // 2.5m未満の高めの球はハイボレーにする
   const isVolley = !isSmash && bounces === 0 && Math.abs(p.y) < 8;
   const side = (ball.x - p.x) * s >= 0 ? 'f' : 'b';
   p.shot = isSmash ? 'sm' : side + (isVolley ? 'v' : 's');
@@ -405,7 +405,7 @@ function fault(reason){
   showMsg('フォルト（' + reason + '）', 1.2);
   pendingSecondServe = true;
 }
-let pendingSecondServe = false, hitFrom = null, tossing = false, serveQueued = false, serveKind = null;
+let pendingSecondServe = false, hitFrom = null, tossing = false, serveQueued = false, serveKind = null, tossT = 0;
 const DRIB = 1.5; // ボールつきの時間（0.5秒×3回）
 function dribbleQ(t){ const f = (t % 0.5) / 0.5; return (2 * f - 1) * (2 * f - 1); } // 1=手元, 0=地面
 
@@ -470,7 +470,7 @@ function update(dt){
   if (keys['arrowup'] || keys['w']) my -= 1;
   if (keys['arrowdown'] || keys['s']) my += 1;
   if (joy.active) { mx = joy.x; my = joy.y; }
-  const hs = 4.5;
+  const hs = 4.0;
   if (state === 'serve' && servingPlayer() === human) {
     human.x += mx * hs * dt * 0.5;
     const lim = serveSide > 0 ? [0.3, SW] : [-SW, -0.3];
@@ -499,10 +499,12 @@ function update(dt){
       if (coming && d < 8) {
         target = Math.max(0, Math.min(1, 1 - (d - 1.6) / 4.5));
         const sd = (ball.x - p.x) * sideSign(p.team) >= 0 ? 'f' : 'b';
-        p.prepType = ball.z > 2.4 && ball.vz < 3 && bounces === 0 ? 'sm' : sd + (bounces === 0 && Math.abs(p.y) < 8 ? 'v' : 's');
+        p.prepType = ball.z > 2.8 && ball.vz < 3 && bounces === 0 ? 'sm' : sd + (bounces === 0 && Math.abs(p.y) < 8 ? 'v' : 's');
       }
     }
     p.prep = (p.prep || 0) + (target - (p.prep || 0)) * Math.min(1, dt * 10);
+    // サーブ：トスの間はトロフィーポーズ（左手を上に伸ばし、ラケットを立てて構える）を保ち、打つ直前にラケットを背中に落とす
+    if (state === 'serve' && p === servingPlayer() && tossing) p.prep = tossT < 0.45 ? Math.min(0.65, tossT / 0.25 * 0.65) : Math.min(1, 0.65 + (tossT - 0.45) / 0.18 * 0.35);
   }
 
   if (state === 'serve') {
@@ -520,10 +522,10 @@ function update(dt){
       if (timer >= DRIB + 0.35 && (sp.isHuman ? serveQueued : timer > DRIB + 0.9)) {
         serveQueued = false;
         // トス：右肩の少し前へ真上に投げ上げる
-        tossing = true; showMsg('', 0); ball.vz = 5.6; ball.vx = (0.25 * sg) / 0.57; ball.vy = 0;
+        tossing = true; tossT = 0; showMsg('', 0); ball.vz = 6.2; ball.vx = (0.25 * sg) / 0.63; ball.vy = 0;
       }
     } else {
-      ball.x += ball.vx * dt; ball.vz -= G * dt; ball.z += ball.vz * dt;
+      tossT += dt; ball.x += ball.vx * dt; ball.vz -= G * dt; ball.z += ball.vz * dt;
       if (ball.vz <= 0) { tossing = false; serve(sp); }
     }
     serveRequest = false;
@@ -894,7 +896,7 @@ function updateRig(R){
   // 腕
   const lh = pose.l === 'grip' ? [pose.h[0] - 0.02, pose.h[1] - 0.04, pose.h[2] - 0.1] : pose.l;
   // 肩→肘→手首を2本の骨として解く（IK）。肘は外側・下・後ろ寄りに自然に曲がる
-  const L1 = 0.37, L2 = 0.36;
+  const L1 = 0.31, L2 = 0.3;
   const handsW = [];
   [[0.24, pose.h], [-0.24, lh]].forEach(([sa, hand], i) => {
     const s = [sa * twc, -sa * tws, 1.25];
