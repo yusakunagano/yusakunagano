@@ -114,7 +114,7 @@ cv.addEventListener('mousedown', () => { serveRequest = true; });
 // team 0 = player side (bottom, y>0), team 1 = CPU (top, y<0)
 let players = [], ball, state = 'menu', timer = 0;
 let score, server, serveSide, faults, lastHitter, bounces, isServe, rallyHits, human;
-const SPEED = [5.2, 6.0, 6.8];
+const SPEED = [4.0, 4.6, 5.2];
 
 function mkPlayer(team, role, isHuman, color){
   return { team, role, isHuman, color, x: 0, y: 0, hx: 0, hy: 0, cool: 0, swing: 0 };
@@ -361,7 +361,7 @@ function update(dt){
   if (keys['arrowright'] || keys['d']) mx += 1;
   if (keys['arrowup'] || keys['w']) my -= 1;
   if (keys['arrowdown'] || keys['s']) my += 1;
-  const hs = 6.2;
+  const hs = 4.9;
   if (state === 'serve' && servingPlayer() === human) {
     human.x += mx * hs * dt * 0.5;
     const lim = serveSide > 0 ? [0.3, SW] : [-SW, -0.3];
@@ -377,7 +377,7 @@ function update(dt){
     const d = Math.hypot(p.x - (p.px ?? p.x), p.y - (p.py ?? p.y));
     if (d < 0.5 && dt > 0) p.vxs = (p.vxs || 0) * 0.92 + ((p.x - (p.px ?? p.x)) / dt) * 0.08;
     p.px = p.x; p.py = p.y;
-    if (d < 0.5) { p.walk = (p.walk || 0) + d * 4.2; p.mv = (p.mv || 0) * 0.9 + (d / dt > 0.5 ? 1 : 0) * 0.1; }
+    if (d < 0.5) { p.walk = (p.walk || 0) + d * 3.4; p.mv = (p.mv || 0) * 0.9 + (d / dt > 0.5 ? 1 : 0) * 0.1; }
   }
   for (const p of players) {
     p.cool -= dt; p.swing -= dt; p.label = (p.label || 0) - dt; p.st = (p.st ?? 9) + dt;
@@ -676,17 +676,32 @@ function drawPlayer(p){
   }
   // ショーツ
   ctx.fillStyle = '#f4f4f4';
-  ctx.beginPath(); ctx.ellipse(x, hipY - S(0.02), S(0.27 * (1 - 0.25 * Math.abs(ys))), S(0.14), 0, 0, Math.PI * 2); ctx.fill();
+  { const a = toS([-0.21, 0, 0.7]), b = toS([0.21, 0, 0.7]), c = toS([0.23, 0, 0.5]), d = toS([-0.23, 0, 0.5]);
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(c[0], c[1]); ctx.lineTo(d[0], d[1]); ctx.closePath(); ctx.fill(); }
   // 胴体（立体感のグラデーション）
   ctx.fillStyle = p.color;
   const tot = yaw + twist * 0.8, ts = Math.abs(Math.sin(tot));
-  ctx.beginPath(); ctx.ellipse(x, bodyY, S(0.34 * (1 - 0.3 * ts)), S(0.4), -tot * rs * 0.15, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = shade(x, bodyY, S(0.4)); ctx.fill();
+  // 胴体：肩幅が広く腰に向かって細くなる形（ひねりで肩が回る）
+  { const t2 = twist * 0.35, c2 = Math.cos(t2), s2 = Math.sin(t2);
+    const LS = toS([-0.31 * twc, 0.31 * tws, 1.3]), RS = toS([0.31 * twc, -0.31 * tws, 1.3]);
+    const LW = toS([-0.2 * c2, 0.2 * s2, 0.66]), RW = toS([0.2 * c2, -0.2 * s2, 0.66]);
+    const NK = toS([0, 0, 1.42]);
+    ctx.beginPath();
+    ctx.moveTo(LS[0], LS[1] + S(0.06));
+    ctx.quadraticCurveTo(LS[0], LS[1] - S(0.05), (LS[0] + NK[0]) / 2, NK[1] + S(0.04));
+    ctx.lineTo((RS[0] + NK[0]) / 2, NK[1] + S(0.04));
+    ctx.quadraticCurveTo(RS[0], RS[1] - S(0.05), RS[0], RS[1] + S(0.06));
+    ctx.quadraticCurveTo(RS[0] - (RS[0] - RW[0]) * 0.2, (RS[1] + RW[1]) / 2, RW[0], RW[1]);
+    ctx.lineTo(LW[0], LW[1]);
+    ctx.quadraticCurveTo(LS[0] - (LS[0] - LW[0]) * 0.2, (LS[1] + LW[1]) / 2, LS[0], LS[1] + S(0.06));
+    ctx.closePath(); ctx.fill();
+    const g = ctx.createLinearGradient(Math.min(LS[0], RS[0]), 0, Math.max(LS[0], RS[0]), 0);
+    g.addColorStop(0, 'rgba(255,255,255,.28)'); g.addColorStop(0.5, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(0,0,0,.28)');
+    ctx.fillStyle = g; ctx.fill(); }
   // 肩のライン（体のひねりが分かるように）
   { const L = toS([-0.3 * twc, 0.3 * tws, 1.25]), R = toS([0.3 * twc, -0.3 * tws, 1.25]);
     line([L, R], S(0.13), 'rgba(0,0,0,.28)');
-    ctx.fillStyle = 'rgba(255,255,255,.35)'; const near = (fromBack ? (0.3 * tws) : (-0.3 * tws)) < 0 ? L : R;
-    ctx.beginPath(); ctx.arc(near[0], near[1], S(0.09), 0, 7); ctx.fill(); }
+  }
   // 頭
   ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(x, headY, S(0.24), 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#3b2a1e';
