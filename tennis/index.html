@@ -4,10 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>テニスゲーム</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
   html,body{margin:0;height:100%;background:#1d3b2a;color:#fff;font-family:system-ui,sans-serif;overflow:hidden;touch-action:none}
   #wrap{position:relative;width:100%;height:100%;display:flex;justify-content:center;align-items:center}
-  canvas{display:block}
+  canvas{display:block;position:absolute;inset:0}
   #hud{position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.55);padding:6px 14px;border-radius:8px;font-size:15px;white-space:nowrap;text-align:center}
   #msg{position:absolute;top:45%;left:50%;transform:translate(-50%,-50%);font-size:26px;font-weight:bold;text-shadow:0 2px 6px #000;pointer-events:none;text-align:center}
   .menu{position:absolute;inset:0;background:rgba(10,30,20,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px}
@@ -60,33 +61,13 @@
 </div>
 <script>
 (() => {
-const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const cv = document.getElementById('c');
 const hud = document.getElementById('hud'), msgEl = document.getElementById('msg');
 const menu = document.getElementById('menu');
 
 // ---- court constants (meters) ----
 const HL = 11.885, DW = 5.485, SW = 4.115, SL = 6.4, NET_H = 0.914, G = 9.8;
 const VIEW_W = 16;
-// ---- 透視投影カメラ（手前ベースライン後方・高い位置から見る） ----
-const CAMY = HL + 9, CAMZ = 10, PITCH = 0.42, PC = Math.cos(PITCH), PS = Math.sin(PITCH);
-let F = 100, CX = 0, HY = 0, curF = 10;
-function cam(y, z){ const dy = CAMY - y, dz = z - CAMZ; return [Math.max(0.5, dy * PC - dz * PS), dy * PS + dz * PC]; }
-function resize(){
-  const dpr = devicePixelRatio, w = innerWidth, h = innerHeight;
-  cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px'; cv.style.height = h + 'px';
-  const W = cv.width, H = cv.height;
-  const [dn] = cam(HL + 2, 0);
-  const F1 = W * dn / (W < H ? 12.6 : 14.5);
-  const [d1, u1] = cam(-HL - 3, 2.6), [d2, u2] = cam(HL + 3, 0);
-  const top = -u1 / d1, bot = -u2 / d2; // F=1 のときの画面y
-  const F2 = H * 0.84 / (bot - top);
-  F = Math.min(F1, F2); CX = W / 2;
-  HY = H * 0.55 - F * (top + bot) / 2;
-}
-addEventListener('resize', resize); resize();
-function P(x, y, z = 0){ const [d, u] = cam(y, z), f = F / d; return [CX + x * f, HY - u * f, f]; }
-const S = v => v * curF;
-function inv(X, Y){ const k = (HY - Y) / F; const den = PS - k * PC; if (den <= 0.01) return { x: 0, y: -HL - 5 }; const dy = CAMZ * (PC + k * PS) / den; const d = dy * PC + CAMZ * PS; return { x: (X - CX) * d / F, y: CAMY - dy }; }
 
 // ---- settings ----
 let mode = 'singles', pos = 'back', level = 1;
@@ -104,7 +85,14 @@ const keys = {};
 addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if (e.key === ' ') { e.preventDefault(); serveRequest = true; } });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 let touch = null, serveRequest = false;
-function toCourt(t){ const r = cv.getBoundingClientRect(); return inv((t.clientX - r.left) * devicePixelRatio, (t.clientY - r.top) * devicePixelRatio); }
+const raycaster = new THREE.Raycaster(), groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+function toCourt(t){
+  const r = cv.getBoundingClientRect();
+  raycaster.setFromCamera({ x: (t.clientX - r.left) / r.width * 2 - 1, y: -((t.clientY - r.top) / r.height * 2 - 1) }, camera);
+  const hit = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(groundPlane, hit)) return { x: 0, y: -HL };
+  return { x: hit.x, y: hit.z };
+}
 cv.addEventListener('touchstart', e => { touch = toCourt(e.touches[0]); serveRequest = true; e.preventDefault(); }, { passive: false });
 cv.addEventListener('touchmove', e => { touch = toCourt(e.touches[0]); e.preventDefault(); }, { passive: false });
 cv.addEventListener('touchend', () => { touch = null; });
@@ -518,61 +506,298 @@ function aiMove(dt){
   }
 }
 
-// ---- render ----
-function poly(pts){ ctx.beginPath(); pts.forEach((q, i) => { const [X, Y] = P(q[0], q[1]); i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); }); ctx.closePath(); }
-function seg(x1, y1, x2, y2){ const [a, b] = P(x1, y1), [c, d] = P(x2, y2); ctx.moveTo(a, b); ctx.lineTo(c, d); }
-function draw(){
-  // 空と観客席
-  const sky = ctx.createLinearGradient(0, 0, 0, P(0, -HL - 8)[1]);
-  sky.addColorStop(0, '#7fb6e6'); sky.addColorStop(1, '#cfe6f5');
-  ctx.fillStyle = sky; ctx.fillRect(0, 0, cv.width, cv.height);
-  ctx.fillStyle = '#2b5e3f'; { const yb = P(0, -HL - 8)[1]; ctx.fillRect(0, yb, cv.width, cv.height - yb); }
-  ctx.fillStyle = '#1f3d6b'; { const [, yb] = P(0, -HL - 8); const [, yt] = P(0, -HL - 8, 2.5); ctx.fillRect(0, yt, cv.width, yb - yt); }
-  ctx.fillStyle = '#2e6b45'; poly([[-DW - 3.5, -HL - 6], [DW + 3.5, -HL - 6], [DW + 3.5, HL + 6], [-DW - 3.5, HL + 6]]); ctx.fill();
-  ctx.fillStyle = '#3a7d54'; poly([[-DW, -HL], [DW, -HL], [DW, HL], [-DW, HL]]); ctx.fill();
-  if (mode === 'singles') { ctx.fillStyle = 'rgba(0,0,0,.12)'; poly([[-DW, -HL], [-SW, -HL], [-SW, HL], [-DW, HL]]); ctx.fill(); poly([[SW, -HL], [DW, -HL], [DW, HL], [SW, HL]]); ctx.fill(); }
-  ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.5, F / CAMY * 0.07);
-  ctx.beginPath();
-  seg(-DW, -HL, DW, -HL); seg(-DW, HL, DW, HL); seg(-DW, -HL, -DW, HL); seg(DW, -HL, DW, HL);
-  seg(-SW, -HL, -SW, HL); seg(SW, -HL, SW, HL);
-  seg(-SW, -SL, SW, -SL); seg(-SW, SL, SW, SL); seg(0, -SL, 0, SL);
-  seg(0, -HL, 0, -HL + 0.3); seg(0, HL, 0, HL - 0.3);
-  ctx.stroke();
-  const drawables = [];
-  for (const p of players) drawables.push({ y: p.y, f: () => drawPlayer(p) });
-  drawables.push({ y: ball.y, f: drawBall });
-  drawables.push({ y: 0, f: drawNet });
-  drawables.sort((a, b) => a.y - b.y).forEach(d => d.f());
+// ---- 3D render (Three.js) ----
+// 座標: ゲームの x → three.x, ゲームの y → three.z, 高さ z → three.y
+const V3 = THREE.Vector3;
+const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#9cc7ea');
+scene.fog = new THREE.Fog('#9cc7ea', 60, 120);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 300);
 
+function resize(){
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false); cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  camera.aspect = w / h;
+  if (w >= h) { camera.fov = 44; camera.position.set(0, 10, HL + 11.5); camera.lookAt(0, 0, -2.2); }
+  else { camera.fov = 58; camera.position.set(0, 21, HL + 19); camera.lookAt(0, 0, -0.8); }
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+
+const M = (color, opt = {}) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.75, metalness: 0 }, opt));
+
+// ライト
+scene.add(new THREE.HemisphereLight('#e8f2ff', '#b0704a', 0.65));
+const sun = new THREE.DirectionalLight('#fff6e8', 0.95);
+sun.position.set(-14, 28, 12); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -22, right: 22, top: 22, bottom: -22, near: 1, far: 80 });
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+
+// 地面とコート
+function plane(w, h, mat, x, z, y = 0){
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); m.receiveShadow = true; scene.add(m); return m;
+}
+plane(160, 160, M('#b9653d'), 0, 0);
+plane(DW * 2 + 7, HL * 2 + 13, M('#3f7cc4'), 0, 0, 0.002);
+plane(DW * 2, HL * 2, M('#2f66ad'), 0, 0, 0.004);
+const lineMat = M('#ffffff', { roughness: 0.5 });
+const LW = 0.05;
+function cline(x1, z1, x2, z2){
+  const len = Math.hypot(x2 - x1, z2 - z1), m = plane(x1 === x2 ? LW : len + LW, x1 === x2 ? len + LW : LW, lineMat, (x1 + x2) / 2, (z1 + z2) / 2, 0.007);
+  return m;
+}
+cline(-DW, -HL, DW, -HL); cline(-DW, HL, DW, HL); cline(-DW, -HL, -DW, HL); cline(DW, -HL, DW, HL);
+cline(-SW, -HL, -SW, HL); cline(SW, -HL, SW, HL);
+cline(-SW, -SL, SW, -SL); cline(-SW, SL, SW, SL); cline(0, -SL, 0, SL);
+cline(0, -HL, 0, -HL + 0.2); cline(0, HL, 0, HL - 0.2);
+
+// ネット
+{
+  const L = DW + 0.9, H = 1.07;
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'); g.strokeStyle = 'rgba(20,20,20,.85)'; g.lineWidth = 3;
+  g.strokeRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(L * 2 / 0.08, H / 0.08);
+  const geo = new THREE.PlaneGeometry(L * 2, H, 40, 1);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i);
+    if (y > 0) pos.setY(i, -H / 2 + (H - (H - NET_H) * (1 - Math.abs(x) / L)));
+  }
+  geo.translate(0, H / 2, 0);
+  const net = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, alphaTest: 0.05, color: '#222' }));
+  net.castShadow = true; scene.add(net);
+  const tapeMat = M('#ffffff');
+  for (const s of [-1, 1]) {
+    const len = Math.hypot(L, H - NET_H);
+    const t = new THREE.Mesh(new THREE.BoxGeometry(len, 0.06, 0.03), tapeMat);
+    t.position.set(s * L / 2, (H + NET_H) / 2 - 0.02, 0); t.rotation.z = s * Math.atan2(H - NET_H, L); t.castShadow = true; scene.add(t);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, H + 0.05, 12), M('#2f4f3a', { metalness: 0.4, roughness: 0.4 }));
+    post.position.set(s * L, (H + 0.05) / 2, 0); post.castShadow = true; scene.add(post);
+  }
+  const band = new THREE.Mesh(new THREE.BoxGeometry(0.05, NET_H, 0.02), tapeMat); band.position.set(0, NET_H / 2, 0); scene.add(band);
+}
+
+// スタジアム（壁・観客席・看板・審判台）
+{
+  const wallMat = M('#2aa6a6');
+  const backZ = -HL - 7.5, sideX = DW + 9.5;
+  const wall = (w, x, z, ry) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, 1.1, 0.3), wallMat); m.position.set(x, 0.55, z); m.rotation.y = ry; m.receiveShadow = true; scene.add(m); };
+  wall(sideX * 2 + 0.3, 0, backZ, 0); wall(HL * 2 + 22, -sideX, 1.5, Math.PI / 2); wall(HL * 2 + 22, sideX, 1.5, Math.PI / 2);
+  // 看板
+  const ac = document.createElement('canvas'); ac.width = 256; ac.height = 64;
+  const ag = ac.getContext('2d'); ag.fillStyle = '#f6f6f6'; ag.fillRect(0, 0, 256, 64);
+  ag.fillStyle = '#1b3f73'; ag.font = 'bold italic 34px sans-serif'; ag.textAlign = 'center'; ag.textBaseline = 'middle'; ag.fillText('ACE OPEN', 128, 34);
+  const adMat = new THREE.MeshStandardMaterial({ map: new THREE.CanvasTexture(ac), roughness: 0.6 });
+  for (let i = -3; i <= 3; i += 2) { const b = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.9, 0.15), adMat); b.position.set(i * 2.2, 0.45, backZ + 1.6); b.castShadow = true; scene.add(b); }
+  // 観客席（段）と観客
+  const standMat = M('#d9dde0');
+  const rows = 7, bodies = [], heads = [];
+  const addStand = (cx, cz, len, ry) => {
+    for (let r = 0; r < rows; r++) {
+      const st = new THREE.Mesh(new THREE.BoxGeometry(len, 0.55, 0.9), r % 2 ? standMat : M('#c7ccd0'));
+      const off = 0.9 * r + 0.6, y = 1.1 + r * 0.55;
+      const dx = Math.sin(ry) * off, dz = Math.cos(ry) * off;
+      st.position.set(cx - dx, y - 0.27, cz - dz); st.rotation.y = ry; scene.add(st);
+      for (let k = 0; k < len / 0.62; k++) {
+        if (Math.random() < 0.15) continue;
+        const t = -len / 2 + 0.31 + k * 0.62 + (Math.random() - .5) * 0.1;
+        const px = cx - dx + Math.cos(ry) * t, pz = cz - dz - Math.sin(ry) * t;
+        bodies.push([px, y + 0.25, pz]); heads.push([px, y + 0.6, pz]);
+      }
+    }
+  };
+  addStand(0, backZ - 0.4, sideX * 2, 0);
+  addStand(-sideX - 0.4, 1.5, HL * 2 + 22, -Math.PI / 2);
+  addStand(sideX + 0.4, 1.5, HL * 2 + 22, Math.PI / 2);
+  const bodyIM = new THREE.InstancedMesh(new THREE.BoxGeometry(0.36, 0.5, 0.28), M('#ffffff'), bodies.length);
+  const headIM = new THREE.InstancedMesh(new THREE.SphereGeometry(0.11, 8, 6), M('#ffffff'), heads.length);
+  const mtx = new THREE.Matrix4(), col = new THREE.Color();
+  const shirtCols = ['#e74c3c', '#3498db', '#f1c40f', '#ecf0f1', '#2ecc71', '#9b59b6', '#34495e', '#e67e22', '#1abc9c', '#fd79a8'];
+  const skinCols = ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac'];
+  bodies.forEach((b, i) => { mtx.setPosition(b[0], b[1], b[2]); bodyIM.setMatrixAt(i, mtx); bodyIM.setColorAt(i, col.set(shirtCols[(Math.random() * shirtCols.length) | 0])); });
+  heads.forEach((b, i) => { mtx.setPosition(b[0], b[1], b[2]); headIM.setMatrixAt(i, mtx); headIM.setColorAt(i, col.set(skinCols[(Math.random() * skinCols.length) | 0])); });
+  scene.add(bodyIM, headIM);
+  // 審判台
+  const chair = new THREE.Group();
+  const cm = M('#e9eef2'), cb = M('#3aa3c9');
+  const leg = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.8, 0.7), cb); leg.position.y = 0.9; chair.add(leg);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.12, 0.9), cm); seat.position.y = 1.86; chair.add(seat);
+  const backr = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.8, 0.9), cm); backr.position.set(0.42, 2.3, 0); chair.add(backr);
+  const ub = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.55, 0.4), M('#2c3e66')); ub.position.set(0.1, 2.25, 0); chair.add(ub);
+  const uh = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), M('#e0ac69')); uh.position.set(0.1, 2.65, 0); chair.add(uh);
+  chair.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  chair.position.set(DW + 1.7, 0, 0); scene.add(chair);
+}
+
+// ボール
+const ballMesh = new THREE.Mesh(new THREE.SphereGeometry(0.075, 16, 12), M('#dfff3a', { emissive: '#4a5a00', roughness: 0.6 }));
+ballMesh.castShadow = true; scene.add(ballMesh);
+const ballBlob = new THREE.Mesh(new THREE.CircleGeometry(0.11, 16), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.3, depthWrite: false }));
+ballBlob.rotation.x = -Math.PI / 2; scene.add(ballBlob);
+
+// 選手の3D人形
+const SKIN = '#e2b48c';
+const geoCyl = new THREE.CylinderGeometry(1, 1, 1, 10);
+const geoSph = new THREE.SphereGeometry(1, 14, 10);
+function limbMesh(r, mat){ const m = new THREE.Mesh(geoCyl, mat); m.userData.r = r; m.castShadow = true; return m; }
+function setLimb(m, a, b){
+  const d = new V3().subVectors(b, a), len = d.length();
+  m.position.copy(a).addScaledVector(d, 0.5);
+  m.scale.set(m.userData.r, Math.max(0.001, len), m.userData.r);
+  m.quaternion.setFromUnitVectors(new V3(0, 1, 0), d.normalize());
+}
+function ball3(r, mat){ const m = new THREE.Mesh(geoSph, mat); m.scale.setScalar(r); m.castShadow = true; return m; }
+const rigs = [];
+function buildRig(p){
+  const g = new THREE.Group(); scene.add(g);
+  const skin = M(SKIN, { roughness: 0.6 }), shirt = M(p.color, { roughness: 0.55 });
+  const shorts = M(p.team === 0 ? '#1d2b5a' : '#f4f4f4'), shoe = M('#fafafa', { roughness: 0.4 });
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.15, 0.56, 16), shirt); torso.scale.z = 0.62; torso.castShadow = true;
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), shirt); chest.scale.set(1, 0.5, 0.62); chest.castShadow = true;
+  const hips = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.19, 0.24, 14), shorts); hips.scale.z = 0.7; hips.castShadow = true;
+  const neck = limbMesh(0.05, skin);
+  const head = ball3(0.115, skin);
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.122, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), M('#3b2a1e', { roughness: 0.9 }));
+  const ua = [limbMesh(0.05, shirt), limbMesh(0.05, shirt)], fa = [limbMesh(0.04, skin), limbMesh(0.04, skin)];
+  const hands = [ball3(0.045, skin), ball3(0.045, skin)], elbows = [ball3(0.045, skin), ball3(0.045, skin)], shoulders = [ball3(0.07, shirt), ball3(0.07, shirt)];
+  const th = [limbMesh(0.075, skin), limbMesh(0.075, skin)], sh = [limbMesh(0.055, skin), limbMesh(0.055, skin)], knees = [ball3(0.06, skin), ball3(0.06, skin)];
+  const shoes = [new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.08, 0.27), shoe), new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.08, 0.27), shoe)];
+  shoes.forEach(s => s.castShadow = true);
+  // ラケット
+  const racket = new THREE.Group();
+  const handle = limbMesh(0.016, M('#222'));
+  const frame = new THREE.Mesh(new THREE.TorusGeometry(0.125, 0.012, 6, 28), M(p.team === 0 ? '#d23a2a' : '#222', { roughness: 0.4 })); frame.scale.y = 1.3; frame.castShadow = true;
+  const strings = new THREE.Mesh(new THREE.CircleGeometry(0.12, 24), new THREE.MeshStandardMaterial({ color: '#eeeeee', transparent: true, opacity: 0.35, side: THREE.DoubleSide })); strings.scale.y = 1.3;
+  racket.add(frame, strings);
+  g.add(torso, chest, hips, neck, head, hair, ...ua, ...fa, ...hands, ...elbows, ...shoulders, ...th, ...sh, ...knees, ...shoes, handle, racket);
+  return { p, g, torso, chest, hips, neck, head, hair, ua, fa, hands, elbows, shoulders, th, sh, knees, shoes, handle, racket };
+}
+
+function computePose(p){
+  const ph = p.walk || 0, mv = p.mv || 0;
+  let yaw = Math.max(-1, Math.min(1, (p.vxs || 0) * sideSign(p.team) / 5)) * 0.6;
+  if (state === 'serve' && p === servingPlayer()) yaw = 0.9;
+  else if (p.serveSwing && (p.st ?? 9) < 0.5) { const st = p.st ?? 9; yaw = 0.9 * Math.max(0, 1 - st / 0.3) - 0.25 * Math.min(1, st / 0.3) * Math.max(0, 1 - (st - 0.3) / 0.2); }
+  let pose;
+  const D = 0.38, st = p.st ?? 9;
+  if (st < D && POSES[p.shot]) {
+    const P0 = POSES[p.shot], k = st / D;
+    pose = k < 0.2 ? lerpPose(P0.back, P0.hit, k / 0.2) : lerpPose(P0.hit, P0.fol, (k - 0.2) / 0.8);
+  } else if (st < D + 0.3 && POSES[p.shot]) {
+    pose = lerpPose(POSES[p.shot].fol, READY, (st - D) / 0.3);
+  } else if ((p.prep || 0) > 0.03 && POSES[p.prepType]) {
+    pose = lerpPose(READY, POSES[p.prepType].back, p.prep);
+  } else if (mv > 0.35) {
+    const a = Math.sin(ph) * mv;
+    pose = { h: [0.38, a * 0.35, 0.85], r: [0.08, 0.2 + a * 0.2, -0.35], l: [-0.38, -a * 0.35, 0.85], tw: 0 };
+  } else pose = READY;
+  return { pose, yaw, ph, mv };
+}
+
+function updateRig(R){
+  const p = R.p, { pose, yaw, ph, mv } = computePose(p);
+  const sg = sideSign(p.team);
+  const rx = sg, fz = -sg; // 右手方向 = (sg,0,0)、ネット方向 = (0,0,-sg)
+  const yc = Math.cos(yaw), ys = Math.sin(yaw);
+  const bob = Math.abs(Math.sin(ph)) * 0.04 * mv;
+  const W = (a, f, u, noBob) => { const a2 = a * yc + f * ys, f2 = -a * ys + f * yc; return new V3(p.x + rx * a2, u + (noBob ? 0 : bob), p.y + fz * f2); };
+  const heading = (T) => { const a2 = Math.cos(T + yaw), f2 = -Math.sin(T + yaw); return Math.atan2(-(fz * f2), rx * a2); }; // ローカル右軸の向き
+  const twist = pose.tw || 0, twc = Math.cos(twist), tws = Math.sin(twist);
+  // 胴体・腰・頭
+  R.torso.position.copy(W(0, 0, 1.0)); R.torso.rotation.set(0, heading(twist * 0.8), 0);
+  R.chest.position.copy(W(0, 0, 1.28)); R.chest.rotation.set(0, heading(twist * 0.8), 0);
+  R.hips.position.copy(W(0, 0, 0.7)); R.hips.rotation.set(0, heading(twist * 0.3), 0);
+  setLimb(R.neck, W(0, 0, 1.3), W(0, 0, 1.45));
+  R.head.position.copy(W(0, 0.0, 1.55));
+  R.hair.position.copy(W(0, -0.015, 1.565)); R.hair.rotation.set(0, heading(twist * 0.5), 0);
+  R.hair.rotateX(-0.35 * (1)); // 後頭部側を厚く
+  // 腕
+  const lh = pose.l === 'grip' ? [pose.h[0] - 0.02, pose.h[1] - 0.04, pose.h[2] - 0.1] : pose.l;
+  [[0.24, pose.h], [-0.24, lh]].forEach(([sa, hand], i) => {
+    const s = [sa * twc, -sa * tws, 1.25];
+    const e = [(s[0] + hand[0]) / 2 + Math.sign(sa) * 0.1, (s[1] + hand[1]) / 2 - 0.05, (s[2] + hand[2]) / 2 - 0.1];
+    const S0 = W(...s), E = W(...e), H = W(...hand);
+    R.shoulders[i].position.copy(S0); R.elbows[i].position.copy(E); R.hands[i].position.copy(H);
+    setLimb(R.ua[i], S0, E); setLimb(R.fa[i], E, H);
+  });
+  // ラケット
+  const h = pose.h, rv = pose.r;
+  const Hp = W(...h), Np = W(h[0] + rv[0] * 0.42, h[1] + rv[1] * 0.42, h[2] + rv[2] * 0.42), Cp = W(h[0] + rv[0] * 0.75, h[1] + rv[1] * 0.75, h[2] + rv[2] * 0.75);
+  setLimb(R.handle, Hp, Np);
+  const yAx = new V3().subVectors(Cp, Np).normalize();
+  let hint = new V3(0, 0, fz); if (Math.abs(yAx.dot(hint)) > 0.9) hint = new V3(0, 1, 0);
+  const xAx = new V3().crossVectors(yAx, hint).normalize(), zAx = new V3().crossVectors(xAx, yAx);
+  R.racket.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xAx, yAx, zAx));
+  R.racket.position.copy(Cp);
+  // 脚
+  const stride = Math.sin(ph) * 0.28 * mv, lift = 0.1 * mv;
+  [[-0.1, 1], [0.1, -1]].forEach(([la, k], i) => {
+    const hip = W(la, 0, 0.66);
+    const ff = stride * k, fu = Math.max(0, Math.sin(ph) * k) * lift;
+    const foot = W(la * 1.15, ff, 0.05 + fu, true);
+    const knee = W(la * 1.1, ff * 0.5 + 0.09, 0.36 + fu * 0.5 + bob * 0.5, true);
+    setLimb(R.th[i], hip, knee); setLimb(R.sh[i], knee, foot);
+    R.knees[i].position.copy(knee);
+    R.shoes[i].position.copy(foot).add(new V3(0, -0.01, 0)); R.shoes[i].position.addScaledVector(new V3(0, 0, fz), 0.04);
+    R.shoes[i].rotation.set(0, heading(0), 0);
+  });
+}
+
+// ラベル（HTML）
+const labelLayer = document.createElement('div');
+labelLayer.style.cssText = 'position:absolute;inset:0;pointer-events:none;overflow:hidden';
+document.getElementById('wrap').appendChild(labelLayer);
+function labelFor(R){
+  if (!R.label) {
+    R.label = document.createElement('div');
+    R.label.style.cssText = 'position:absolute;transform:translate(-50%,-100%);font:bold 15px sans-serif;text-shadow:0 0 3px #000,0 1px 3px #000;white-space:nowrap;text-align:center';
+    labelLayer.appendChild(R.label);
+  }
+  return R.label;
+}
+const tmpV = new V3();
+function render3d(){
+  // 選手リグの同期
+  for (let i = rigs.length - 1; i >= 0; i--) if (!players.includes(rigs[i].p)) { scene.remove(rigs[i].g); rigs[i].label && rigs[i].label.remove(); rigs.splice(i, 1); }
+  for (const p of players) if (!rigs.find(r => r.p === p)) rigs.push(buildRig(p));
+  for (const R of rigs) {
+    updateRig(R);
+    const p = R.p, el = labelFor(R);
+    tmpV.set(p.x, 2.35, p.y).project(camera);
+    const sx = (tmpV.x + 1) / 2 * innerWidth, sy = (1 - tmpV.y) / 2 * innerHeight;
+    let html = '';
+    if (p.label > 0) {
+      const col = p.tag === '詰まった！' ? '#ff6b6b' : p.tag === '正面…' ? '#c9c9c9' : p.tag ? '#ff9f1c' : p.shot === 'sm' ? '#ff5fd2' : p.shot && p.shot[0] === 'b' ? '#5fd0ff' : '#ffd23f';
+      html += `<div style="color:${col};opacity:${Math.min(1, p.label * 2)};transform:translateY(${-(0.9 - p.label) * 20}px)">${(SHOT_NAME[p.shot] || '') + (p.tag ? ' ' + p.tag : '')}</div>`;
+    }
+    if (p.isHuman) html += '<div style="color:#fff;font-size:13px">▼ YOU</div>';
+    el.innerHTML = html; el.style.left = sx + 'px'; el.style.top = sy + 'px';
+  }
+  if (ball) {
+    ballMesh.position.set(ball.x, Math.max(0, ball.z) + 0.075, ball.y);
+    ballBlob.position.set(ball.x, 0.012, ball.y);
+    ballBlob.material.opacity = Math.max(0.08, 0.35 - ball.z * 0.05);
+  }
+  renderer.render(scene, camera);
   // HUD
-  const names = ['0', '15', '30', '40'];
-  const [a, b] = score ? score.pts : [0, 0];
-  let pt;
-  if (a >= 3 && b >= 3) pt = a === b ? 'デュース' : (a > b ? 'Ad あなた' : 'Ad CPU');
-  else pt = `${names[Math.min(a, 3)]} - ${names[Math.min(b, 3)]}`;
-  if (score) hud.innerHTML = `あなた <b>${score.games[0]}</b> - <b>${score.games[1]}</b> CPU　|　${pt}　${server === 0 ? '🎾あなたのサーブ' : '🎾CPUのサーブ'}${faults ? '（2nd）' : ''}`;
+  if (score) {
+    const names = ['0', '15', '30', '40'];
+    const [a, b] = score.pts;
+    let pt;
+    if (a >= 3 && b >= 3) pt = a === b ? 'デュース' : (a > b ? 'Ad あなた' : 'Ad CPU');
+    else pt = `${names[Math.min(a, 3)]} - ${names[Math.min(b, 3)]}`;
+    hud.innerHTML = `あなた <b>${score.games[0]}</b> - <b>${score.games[1]}</b> CPU　|　${pt}　${server === 0 ? '🎾あなたのサーブ' : '🎾CPUのサーブ'}${faults ? '（2nd）' : ''}`;
+  }
 }
-function drawNet(){
-  const L = DW + 0.9;
-  ctx.fillStyle = 'rgba(20,20,20,.45)';
-  ctx.beginPath(); { const pts = [P(-L, 0, 0), P(L, 0, 0), P(L, 0, 1.07), P(0, 0, NET_H), P(-L, 0, 1.07)]; pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); ctx.fill(); }
-  // 網目
-  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.beginPath();
-  for (let xx = -L; xx <= L; xx += 0.3) { const h = 1.07 - (1.07 - NET_H) * (1 - Math.abs(xx) / L); const [a, b] = P(xx, 0, 0), [c, d] = P(xx, 0, h); ctx.moveTo(a, b); ctx.lineTo(c, d); }
-  ctx.stroke();
-  const f = P(0, 0)[2];
-  ctx.strokeStyle = '#fff'; ctx.lineWidth = f * 0.07; ctx.beginPath();
-  { const [a, b] = P(-L, 0, 1.07), [c, d] = P(0, 0, NET_H), [e, g] = P(L, 0, 1.07); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.lineTo(e, g); }
-  ctx.stroke();
-  ctx.strokeStyle = '#555'; ctx.lineWidth = f * 0.1; ctx.beginPath();
-  for (const xx of [-L, L]) { const [a, b] = P(xx, 0, 0), [c, d] = P(xx, 0, 1.07); ctx.moveTo(a, b); ctx.lineTo(c, d); }
-  ctx.stroke();
-}
-function shade(cx, cy, r){
-  const g = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.05, cx, cy, r * 1.1);
-  g.addColorStop(0, 'rgba(255,255,255,.55)'); g.addColorStop(0.45, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(0,0,0,.4)');
-  return g;
-}
+
 const READY = { h: [0.05, 0.38, 0.95], r: [0, 0.45, 0.4], l: 'grip' };
 const POSES = {
   fs: { back: { tw: 0.95, h: [0.65, -0.45, 1.0], r: [0.15, -0.65, 0.15], l: [0.05, 0.45, 1.05] },
@@ -599,155 +824,14 @@ function lerpPose(A, B, t){
   const l = (A.l === 'grip' && B.l === 'grip') ? 'grip' : lerp3(gl(A), gl(B), t);
   return { h: lerp3(A.h, B.h, t), r: lerp3(A.r, B.r, t), l, tw: (A.tw || 0) + ((B.tw || 0) - (A.tw || 0)) * t };
 }
-function drawPlayer(p){
-  const [x, y, f0] = P(p.x, p.y); curF = f0;
-  const sg = sideSign(p.team), fwd = -sg, rs = sg; // fwd: ネット方向（画面y）, rs: 右手側（画面x）
-  const fromBack = fwd < 0; // 手前のチームは背中が見える
-  const ph = p.walk || 0, mv = p.mv || 0;
-  // 横移動中は進行方向へ少し斜めに体を向ける
-  let yaw = Math.max(-1, Math.min(1, (p.vxs || 0) * rs / 5)) * 0.6;
-  // サーブは横向き（左肩をネットに向けた斜めの構え）で打ち、打ったあと正面へ戻る
-  if (state === 'serve' && p === servingPlayer()) yaw = 0.9;
-  else if (p.serveSwing && (p.st ?? 9) < 0.5) yaw = 0.9 * Math.max(0, 1 - (p.st ?? 9) / 0.3) - 0.25 * Math.min(1, (p.st ?? 9) / 0.3) * Math.max(0, 1 - ((p.st ?? 9) - 0.3) / 0.2);
-  const yc = Math.cos(yaw), ys = Math.sin(yaw);
-  const ready = p.swing <= -0.3, running = ready && mv > 0.35;
-  const bob = Math.abs(Math.sin(ph)) * S(0.06) * mv;
-  const bodyY = y - S(0.95) - bob, shY = y - S(1.2) - bob, headY = y - S(1.62) - bob;
-  // 影（光源は左上）
-  ctx.fillStyle = 'rgba(0,0,0,.32)';
-  ctx.beginPath(); ctx.ellipse(x + S(0.3), y + S(0.02), S(0.55), S(0.2), -0.2, 0, Math.PI * 2); ctx.fill();
-
-  const line = (pts, w, col) => { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (const q of pts.slice(1)) ctx.lineTo(q[0], q[1]); ctx.stroke(); };
-  const racketHead = (rx, ry, rw, rh, rot, col) => {
-    ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.beginPath(); ctx.ellipse(rx, ry, rw, rh, rot, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = col; ctx.lineWidth = S(0.07); ctx.stroke();
-  };
-  const skin = '#e9b98f', armW = S(0.11);
-  const back = [], front = [];
-
-  // 体ローカル座標 [a=右手側, f=ネット方向, u=高さ] で腕とラケットを表現
-  const toS = (q) => { const a2 = q[0] * yc + q[1] * ys, f2 = -q[0] * ys + q[1] * yc; return [x + a2 * rs * curF, y - bob - q[2] * curF * 0.95 + f2 * fwd * curF * 0.45]; };
-  let pose;
-  const D = 0.38, st = p.st ?? 9;
-  if (st < D && POSES[p.shot]) {
-    const P0 = POSES[p.shot], k = st / D;
-    pose = k < 0.2 ? lerpPose(P0.back, P0.hit, k / 0.2) : lerpPose(P0.hit, P0.fol, (k - 0.2) / 0.8);
-  } else if (st < D + 0.3 && POSES[p.shot]) {
-    pose = lerpPose(POSES[p.shot].fol, READY, (st - D) / 0.3);
-  } else if ((p.prep || 0) > 0.03 && POSES[p.prepType]) {
-    pose = lerpPose(READY, POSES[p.prepType].back, p.prep);
-  } else if (mv > 0.35) {
-    const a = Math.sin(ph) * mv;
-    pose = { h: [0.38, a * 0.35, 0.85], r: [0.08, 0.2 + a * 0.2, -0.35], l: [-0.38, -a * 0.35, 0.85] };
-  } else pose = READY;
-  const twist = pose.tw || 0, twc = Math.cos(twist), tws = Math.sin(twist);
-  const lh = pose.l === 'grip' ? [pose.h[0] - 0.02, pose.h[1] - 0.04, pose.h[2] - 0.1] : pose.l;
-  const armDraw = (shA, hand) => () => {
-    const sh = [shA * twc, -shA * tws, 1.25];
-    const el = [(sh[0] + hand[0]) / 2 + Math.sign(shA) * 0.12, (sh[1] + hand[1]) / 2 - 0.05, (sh[2] + hand[2]) / 2 - 0.12];
-    line([toS(sh), toS(el), toS(hand)], armW, skin);
-    ctx.fillStyle = skin; const [hx, hy] = toS(hand); ctx.beginPath(); ctx.arc(hx, hy, armW * 0.6, 0, 7); ctx.fill();
-  };
-  const racketDraw = () => {
-    const h = pose.h, rv = pose.r;
-    const neck = [h[0] + rv[0] * 0.45, h[1] + rv[1] * 0.45, h[2] + rv[2] * 0.45];
-    const ctr = [h[0] + rv[0] * 0.78, h[1] + rv[1] * 0.78, h[2] + rv[2] * 0.78];
-    const A = toS(h), B = toS(neck), C = toS(ctr);
-    line([A, B], S(0.07), '#222');
-    const rot = Math.atan2(C[1] - B[1], C[0] - B[0]);
-    const len = Math.max(S(0.1), Math.hypot(C[0] - B[0], C[1] - B[1]));
-    racketHead(C[0], C[1], Math.min(S(0.24), len * 0.75), S(0.15), rot, '#222');
-  };
-  const depth = (q) => q[1] * fwd * -1; // >0 なら画面奥側（背中側から見て体の向こう）
-  const layer = (q, fn) => ((fromBack ? q[1] > 0.12 : q[1] < -0.12) ? back : front).push(fn);
-  const rc = [pose.h[0] + pose.r[0] * 0.6, pose.h[1] + pose.r[1] * 0.6, pose.h[2] + pose.r[2] * 0.6];
-  layer(rc, racketDraw);
-  layer(pose.h, armDraw(0.3, pose.h));
-  layer(lh, armDraw(-0.3, lh));
-  back.forEach(f => f());
-  // 脚
-  const stride = Math.sin(ph) * S(0.22) * mv, lift = S(0.09) * mv, hipY = y - S(0.62) - bob;
-  for (const [lx, k] of [[-0.14, 1], [0.14, -1]]) {
-    const sf = stride * k / Math.max(1e-6, curF * 0.45) * fwd; // 足の前後（ローカルf, m）
-    const [fxS, fyS] = toS([lx, sf, 0]);
-    const fx = fxS, fy = fyS + bob - Math.max(0, Math.sin(ph) * k) * lift;
-    const hipX = toS([lx * 0.8, 0, 0])[0];
-    const kneeY = (hipY + fy) / 2 - Math.abs(stride) * 0.15;
-    line([[hipX, hipY], [(hipX + fx) / 2 + S(lx * 0.1), kneeY], [fx, fy]], S(0.13), skin);
-    ctx.fillStyle = '#fafafa'; ctx.beginPath(); ctx.ellipse(fx, fy, S(0.11), S(0.075), yaw * rs * 0.8, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#999'; ctx.lineWidth = S(0.02); ctx.stroke();
-  }
-  // ショーツ
-  ctx.fillStyle = '#f4f4f4';
-  { const a = toS([-0.21, 0, 0.7]), b = toS([0.21, 0, 0.7]), c = toS([0.23, 0, 0.5]), d = toS([-0.23, 0, 0.5]);
-    for (const [A, B, m] of [[a, b, S(0.18)], [d, c, S(0.2)]]) { const cx = (A[0] + B[0]) / 2; if (Math.abs(A[0] - B[0]) / 2 < m) { const sg2 = A[0] < B[0] ? -1 : 1; A[0] = cx + sg2 * m; B[0] = cx - sg2 * m; } }
-    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(c[0], c[1]); ctx.lineTo(d[0], d[1]); ctx.closePath(); ctx.fill(); }
-  // 胴体（立体感のグラデーション）
-  ctx.fillStyle = p.color;
-  const tot = yaw + twist * 0.8, ts = Math.abs(Math.sin(tot));
-  // 胴体：肩幅が広く腰に向かって細くなる形（ひねりで肩が回る）
-  { const t2 = twist * 0.35, c2 = Math.cos(t2), s2 = Math.sin(t2);
-    const LS = toS([-0.31 * twc, 0.31 * tws, 1.3]), RS = toS([0.31 * twc, -0.31 * tws, 1.3]);
-    const LW = toS([-0.2 * c2, 0.2 * s2, 0.66]), RW = toS([0.2 * c2, -0.2 * s2, 0.66]);
-    const NK = toS([0, 0, 1.42]);
-    // 横向きでも体の厚みが残るように最小幅を確保
-    const widen = (A, B, m) => { const cx = (A[0] + B[0]) / 2, hw = Math.abs(A[0] - B[0]) / 2; if (hw < m) { const sgn = A[0] < B[0] ? -1 : 1; A[0] = cx + sgn * m; B[0] = cx - sgn * m; } };
-    widen(LS, RS, S(0.25)); widen(LW, RW, S(0.18));
-    ctx.beginPath();
-    ctx.moveTo(LS[0], LS[1] + S(0.06));
-    ctx.quadraticCurveTo(LS[0], LS[1] - S(0.05), (LS[0] + NK[0]) / 2, NK[1] + S(0.04));
-    ctx.lineTo((RS[0] + NK[0]) / 2, NK[1] + S(0.04));
-    ctx.quadraticCurveTo(RS[0], RS[1] - S(0.05), RS[0], RS[1] + S(0.06));
-    ctx.quadraticCurveTo(RS[0] - (RS[0] - RW[0]) * 0.2, (RS[1] + RW[1]) / 2, RW[0], RW[1]);
-    ctx.lineTo(LW[0], LW[1]);
-    ctx.quadraticCurveTo(LS[0] - (LS[0] - LW[0]) * 0.2, (LS[1] + LW[1]) / 2, LS[0], LS[1] + S(0.06));
-    ctx.closePath(); ctx.fill();
-    const g = ctx.createLinearGradient(Math.min(LS[0], RS[0]), 0, Math.max(LS[0], RS[0]), 0);
-    g.addColorStop(0, 'rgba(255,255,255,.28)'); g.addColorStop(0.5, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(0,0,0,.28)');
-    ctx.fillStyle = g; ctx.fill(); }
-  // 肩のライン（体のひねりが分かるように）
-  { const L = toS([-0.3 * twc, 0.3 * tws, 1.25]), R = toS([0.3 * twc, -0.3 * tws, 1.25]);
-    line([L, R], S(0.13), 'rgba(0,0,0,.28)');
-  }
-  // 頭
-  ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(x, headY, S(0.24), 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#3b2a1e';
-  ctx.beginPath();
-  if (fromBack) ctx.arc(x, headY - S(0.02), S(0.245), 0, Math.PI * 2);
-  else ctx.arc(x, headY - S(0.04), S(0.245), Math.PI * 1.05, Math.PI * 1.95);
-  ctx.fill();
-  if (!fromBack) { ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(x - S(0.08), headY + S(0.02), S(0.03), 0, 7); ctx.arc(x + S(0.08), headY + S(0.02), S(0.03), 0, 7); ctx.fill(); }
-  ctx.fillStyle = shade(x, headY, S(0.25)); ctx.beginPath(); ctx.arc(x, headY, S(0.25), 0, Math.PI * 2); ctx.fill();
-  front.forEach(f => f());
-  ctx.lineCap = 'butt';
-  if (p.label > 0) {
-    ctx.globalAlpha = Math.min(1, p.label * 2);
-    ctx.font = `bold ${Math.max(11 * devicePixelRatio, S(0.6))}px sans-serif`; ctx.textAlign = 'center';
-    ctx.lineWidth = S(0.12); ctx.strokeStyle = '#000';
-    const t = (SHOT_NAME[p.shot] || '') + (p.tag ? ' ' + p.tag : '');
-    const ly = y - S(2.6) - S((0.9 - p.label) * 0.8);
-    ctx.strokeText(t, x, ly);
-    ctx.fillStyle = p.tag === '詰まった！' ? '#ff6b6b' : p.tag === '正面…' ? '#c9c9c9' : p.tag ? '#ff9f1c' : p.shot === 'sm' ? '#ff5fd2' : p.shot && p.shot[0] === 'b' ? '#5fd0ff' : '#ffd23f';
-    ctx.fillText(t, x, ly);
-    ctx.globalAlpha = 1;
-  }
-  if (p.isHuman) { ctx.fillStyle = '#fff'; ctx.font = `bold ${S(0.55)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('YOU', x, y - S(2.05)); }
-}
-function drawBall(){
-  if (!ball) return;
-  const [gx, gy, f] = P(ball.x, ball.y, 0), [bx, by] = P(ball.x, ball.y, Math.max(0, ball.z));
-  ctx.fillStyle = 'rgba(0,0,0,.35)';
-  ctx.beginPath(); ctx.ellipse(gx, gy, Math.max(2, f * 0.12), Math.max(1, f * 0.06), 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#e8ff3a';
-  ctx.beginPath(); ctx.arc(bx, by, Math.max(2.5, f * 0.12), 0, Math.PI * 2); ctx.fill();
-}
+resize();
 
 let last = performance.now();
 function loop(now){
   let dt = Math.min(0.05, (now - last) / 1000); last = now;
   const steps = 4;
   for (let i = 0; i < steps; i++) update(dt / steps);
-  if (ball) draw(); else { ctx.fillStyle = '#2e6b45'; ctx.fillRect(0, 0, cv.width, cv.height); }
+  render3d();
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
