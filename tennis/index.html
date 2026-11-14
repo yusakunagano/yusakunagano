@@ -222,15 +222,21 @@ function hit(p){
     rush = Math.max(0, Math.min(1, (0.75 - react) / 0.45));
   }
   if (isSmash) rush = 0;
-  if ((jam > 0 && Math.random() < 0.25 + jam * 0.6) || (rush > 0 && Math.random() < rush * 0.75) || (vsSmash && Math.random() < 0.7)) {
+  // 近くから打たれた時：60% ふわっとした球 / 20% ネット / 10% ビシッと返す / 10% 大きく詰まる
+  let close = '';
+  if (rush > 0.25) { const q = Math.random(); close = q < 0.6 ? 'float' : q < 0.8 ? 'net' : q < 0.9 ? 'good' : 'wild'; }
+  if ((jam > 0 && Math.random() < 0.25 + jam * 0.6) || close === 'net' || close === 'wild' || (vsSmash && Math.random() < 0.4)) {
+    if (close) jam = Math.max(jam, 0.7);
     if (vsSmash) jam = Math.max(jam, 0.9);
     mishit = true; jam = Math.max(jam, rush * 0.8);
     tx += (Math.random() - .5) * 6 * jam + (Math.random() - .5) * 2;
     ty *= 0.45 + Math.random() * 0.95;
-    netMiss = Math.random() < 0.35;
+    netMiss = close === 'net' || (close !== 'wild' && Math.random() < 0.35);
   }
   const dist = Math.hypot(tx - ball.x, ty - ball.y);
+  if (close === 'float') { lob = true; power = false; ty = -s * (4 + Math.random() * 6); tx *= 0.6; }
   let spd = lob ? 11 : (p.isHuman ? (power ? 40 : 22) : [17, 20, 24][level]);
+  if (close === 'float') spd = 8;
   if (mishit) spd *= 0.6;
   // 体の正面より少し横（0.55〜1.2m）で打つと力が伝わる。正面だと弱い球になる
   const lat = Math.abs(ball.x - p.x);
@@ -238,15 +244,15 @@ function hit(p){
   if (lat >= 0.55 && lat <= 1.2) pf = 1.08;
   if (!lob && !isSmash) spd *= pf;
   const weak = pf < 0.8 && !isSmash;
-  if (isSmash) spd = (p.isHuman ? 40 : [32, 36, 40][level]) * (mishit ? 0.6 : 1);
+  if (isSmash) spd = (p.isHuman ? 32 : [25, 28, 31][level]) * (mishit ? 0.6 : 1);
   t = dist / spd;
-  if (lob) t = Math.max(t, 1.7);
+  if (lob) t = Math.max(t, close === 'float' ? 1.4 : 1.7);
   const z = Math.max(ball.z, 0.4);
   const v = launch(ball.x, ball.y, z, tx, ty, t);
   Object.assign(ball, v); ball.z = z;
   if (netMiss) ball.vz *= 0.35;
   ball.smash = isSmash && !mishit;
-  p.tag = mishit ? '詰まった！' : weak ? '正面…' : power ? '強打！' : '';
+  p.tag = close === 'float' ? 'ふわっ…' : close === 'good' ? 'ナイス反応！' : mishit ? '詰まった！' : weak ? '正面…' : power ? '強打！' : '';
   lastHitter = p; bounces = 0; isServe = false; rallyHits++;
   hitFrom = { x: ball.x, y: ball.y };
   p.swing = 0.25; p.st = 0; p.prep = 0; p.serveSwing = false;
@@ -442,7 +448,7 @@ function update(dt){
     if (sideSign(p.team) * ball.y < 0) continue;
     const reach = p.isHuman ? 1.5 : [1.0, 1.25, 1.45][level];
     const d = Math.hypot(ball.x - p.x, ball.y - p.y);
-    if (d < reach * (ball.smash ? 0.65 : 1) && ball.z < 3.3) { hit(p); break; }
+    if (d < reach * (ball.smash ? 0.85 : 1) && ball.z < 3.3) { hit(p); break; }
   }
 }
 
