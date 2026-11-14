@@ -332,7 +332,7 @@ function bouncePoint(){
   return { x: ball.x + ball.vx * t, y: ball.y + ball.vy * t, t };
 }
 // 加速度つきの移動：走り出しはゆっくり加速し、止まるときは素早く減速する
-const ACC = 6.5, DEC = 15;
+const ACC = 11, DEC = 16;
 function accelerate(p, dvx, dvy, dt){
   p.mvx = p.mvx || 0; p.mvy = p.mvy || 0;
   const ex = dvx - p.mvx, ey = dvy - p.mvy, e = Math.hypot(ex, ey);
