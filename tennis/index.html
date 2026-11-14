@@ -204,6 +204,8 @@ function hit(p){
   Object.assign(ball, v); ball.z = z;
   lastHitter = p; bounces = 0; isServe = false; rallyHits++;
   p.swing = 0.25;
+  p.stroke = (ball.x - p.x) * s >= 0 ? 'fore' : 'back';
+  p.label = 0.9;
   for (const q of players) q.cool = 0;
   p.cool = 0.4;
 }
@@ -313,7 +315,7 @@ function update(dt){
   }
   clampSide(human);
 
-  for (const p of players) { p.cool -= dt; p.swing -= dt; }
+  for (const p of players) { p.cool -= dt; p.swing -= dt; p.label = (p.label || 0) - dt; }
 
   if (state === 'serve') {
     const sp = servingPlayer();
@@ -475,12 +477,29 @@ function drawPlayer(p){
   ctx.fillStyle = '#f3c9a0';
   ctx.beginPath(); ctx.arc(x, y - S(1.45), S(0.25), 0, Math.PI * 2); ctx.fill();
   // racket
+  // right-handed: forehand on player's right, backhand on left
+  const isBack = p.stroke === 'back' && p.swing > -0.3;
+  const dir = (isBack ? -1 : 1) * sideSign(p.team); // screen x direction of racket
   const sw = p.swing > 0 ? (p.swing / 0.25) : 0;
   const ang = -0.6 + sw * 2.4;
-  ctx.strokeStyle = '#333'; ctx.lineWidth = S(0.08);
-  const rx = x + Math.cos(ang) * S(0.75), ry = y - S(0.8) + Math.sin(ang) * S(0.4);
-  ctx.beginPath(); ctx.moveTo(x + S(0.25), y - S(0.8)); ctx.lineTo(rx, ry); ctx.stroke();
-  ctx.beginPath(); ctx.ellipse(rx, ry, S(0.2), S(0.14), ang, 0, Math.PI * 2); ctx.stroke();
+  const ca = Math.cos(ang) * dir;
+  ctx.strokeStyle = isBack ? '#1a6fb0' : '#333'; ctx.lineWidth = S(0.08);
+  const hx = x + S(0.25) * dir, hy = y - S(0.8);
+  const rx = x + ca * S(0.75), ry = hy + Math.sin(ang) * S(0.4);
+  ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(rx, ry); ctx.stroke();
+  if (isBack) { ctx.beginPath(); ctx.moveTo(x - S(0.25) * dir, hy); ctx.lineTo((hx + rx) / 2, (hy + ry) / 2); ctx.stroke(); }
+  ctx.beginPath(); ctx.ellipse(rx, ry, S(0.2), S(0.14), ang * dir, 0, Math.PI * 2); ctx.stroke();
+  if (p.label > 0) {
+    ctx.globalAlpha = Math.min(1, p.label * 2);
+    ctx.font = `bold ${S(0.7)}px sans-serif`; ctx.textAlign = 'center';
+    ctx.lineWidth = S(0.12); ctx.strokeStyle = '#000';
+    const t = p.stroke === 'back' ? 'バック' : 'フォア';
+    const ly = y - S(2.6) - S((0.9 - p.label) * 0.8);
+    ctx.strokeText(t, x, ly);
+    ctx.fillStyle = p.stroke === 'back' ? '#5fd0ff' : '#ffd23f';
+    ctx.fillText(t, x, ly);
+    ctx.globalAlpha = 1;
+  }
   if (p.isHuman) { ctx.fillStyle = '#fff'; ctx.font = `bold ${S(0.55)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('YOU', x, y - S(1.9)); }
 }
 function drawBall(){
