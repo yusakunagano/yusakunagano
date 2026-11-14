@@ -375,6 +375,7 @@ function update(dt){
 
   for (const p of players) {
     const d = Math.hypot(p.x - (p.px ?? p.x), p.y - (p.py ?? p.y));
+    if (d < 0.5 && dt > 0) p.vxs = (p.vxs || 0) * 0.92 + ((p.x - (p.px ?? p.x)) / dt) * 0.08;
     p.px = p.x; p.py = p.y;
     if (d < 0.5) { p.walk = (p.walk || 0) + d * 4.2; p.mv = (p.mv || 0) * 0.9 + (d / dt > 0.5 ? 1 : 0) * 0.1; }
   }
@@ -594,6 +595,9 @@ function drawPlayer(p){
   const sg = sideSign(p.team), fwd = -sg, rs = sg; // fwd: ネット方向（画面y）, rs: 右手側（画面x）
   const fromBack = fwd < 0; // 手前のチームは背中が見える
   const ph = p.walk || 0, mv = p.mv || 0;
+  // 横移動中は進行方向へ少し斜めに体を向ける
+  const yaw = Math.max(-1, Math.min(1, (p.vxs || 0) * rs / 5)) * 0.6;
+  const yc = Math.cos(yaw), ys = Math.sin(yaw);
   const ready = p.swing <= -0.3, running = ready && mv > 0.35;
   const bob = Math.abs(Math.sin(ph)) * S(0.06) * mv;
   const bodyY = y - S(0.95) - bob, shY = y - S(1.2) - bob, headY = y - S(1.62) - bob;
@@ -610,7 +614,7 @@ function drawPlayer(p){
   const back = [], front = [];
 
   // 体ローカル座標 [a=右手側, f=ネット方向, u=高さ] で腕とラケットを表現
-  const toS = (q) => [x + q[0] * rs * curF, y - bob - q[2] * curF * 0.95 + q[1] * fwd * curF * 0.45];
+  const toS = (q) => { const a2 = q[0] * yc + q[1] * ys, f2 = -q[0] * ys + q[1] * yc; return [x + a2 * rs * curF, y - bob - q[2] * curF * 0.95 + f2 * fwd * curF * 0.45]; };
   let pose;
   const D = 0.38, st = p.st ?? 9;
   if (st < D && POSES[p.shot]) {
@@ -651,18 +655,21 @@ function drawPlayer(p){
   // 脚
   const stride = Math.sin(ph) * S(0.22) * mv, lift = S(0.09) * mv, hipY = y - S(0.62) - bob;
   for (const [lx, k] of [[-0.14, 1], [0.14, -1]]) {
-    const fy = y + stride * k - Math.max(0, Math.sin(ph) * k) * lift;
+    const sf = stride * k / Math.max(1e-6, curF * 0.45) * fwd; // 足の前後（ローカルf, m）
+    const [fxS, fyS] = toS([lx, sf, 0]);
+    const fx = fxS, fy = fyS + bob - Math.max(0, Math.sin(ph) * k) * lift;
+    const hipX = toS([lx * 0.8, 0, 0])[0];
     const kneeY = (hipY + fy) / 2 - Math.abs(stride) * 0.15;
-    line([[x + S(lx * 0.8), hipY], [x + S(lx * 1.05), kneeY], [x + S(lx), fy]], S(0.13), skin);
-    ctx.fillStyle = '#fafafa'; ctx.beginPath(); ctx.ellipse(x + S(lx), fy, S(0.11), S(0.075), 0, 0, Math.PI * 2); ctx.fill();
+    line([[hipX, hipY], [(hipX + fx) / 2 + S(lx * 0.1), kneeY], [fx, fy]], S(0.13), skin);
+    ctx.fillStyle = '#fafafa'; ctx.beginPath(); ctx.ellipse(fx, fy, S(0.11), S(0.075), yaw * rs * 0.8, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#999'; ctx.lineWidth = S(0.02); ctx.stroke();
   }
   // ショーツ
   ctx.fillStyle = '#f4f4f4';
-  ctx.beginPath(); ctx.ellipse(x, hipY - S(0.02), S(0.27), S(0.14), 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x, hipY - S(0.02), S(0.27 * (1 - 0.25 * Math.abs(ys))), S(0.14), 0, 0, Math.PI * 2); ctx.fill();
   // 胴体（立体感のグラデーション）
   ctx.fillStyle = p.color;
-  ctx.beginPath(); ctx.ellipse(x, bodyY, S(0.34), S(0.4), 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x, bodyY, S(0.34 * (1 - 0.28 * Math.abs(ys))), S(0.4), -yaw * rs * 0.15, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = shade(x, bodyY, S(0.4)); ctx.fill();
   // 頭
   ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(x, headY, S(0.24), 0, Math.PI * 2); ctx.fill();
