@@ -180,6 +180,11 @@ function hit(p){
   let tx, ty, t, lob = false, power = false;
   const contact = Math.hypot(ball.x - p.x, ball.y - p.y);
   let jam = Math.max(0, (0.6 - contact) / 0.6); // 近すぎて詰まった度合い
+  const vsSmash = !!ball.smash;
+  const isSmash = ball.z > 2.0;
+  const isVolley = !isSmash && bounces === 0 && Math.abs(p.y) < 8;
+  const side = (ball.x - p.x) * s >= 0 ? 'f' : 'b';
+  p.shot = isSmash ? 'sm' : side + (isVolley ? 'v' : 's');
   const err = [1.6, 1.1, 0.7][level];
   if (p.isHuman) {
     let aim = 0;
@@ -210,6 +215,17 @@ function hit(p){
     // small chance of error
     if (Math.random() < [0.16, 0.09, 0.04][level]) { tx *= 1.35; ty *= 1.12; }
   }
+  if (isSmash) {
+    // スマッシュ：高い打点から叩きつける
+    const W = mode === 'doubles' ? DW : SW;
+    const opps = players.filter(o => o.team !== p.team);
+    tx = (Math.random() - .5) * 2 * (W - 0.8);
+    if (!p.isHuman) { const o = opps[0]; tx = o.x > 0 ? -(1 + Math.random() * (W - 1.6)) : 1 + Math.random() * (W - 1.6); }
+    else if (keys['arrowleft'] || keys['a']) tx = -(W - 1); else if (keys['arrowright'] || keys['d']) tx = W - 1;
+    ty = -s * (SL - 1.5 + Math.random() * 4.5);
+    lob = false; power = false;
+    if (Math.random() < (p.isHuman ? 0.06 : [0.18, 0.1, 0.05][level])) ty *= 1.5;
+  }
   let mishit = false, netMiss = false;
   // ボレー：近くから打たれると反応が間に合わずミスしやすい
   let rush = 0;
@@ -217,7 +233,9 @@ function hit(p){
     const react = Math.hypot(p.x - hitFrom.x, p.y - hitFrom.y) / Math.max(1, Math.hypot(ball.vx, ball.vy));
     rush = Math.max(0, Math.min(1, (0.75 - react) / 0.45));
   }
-  if ((jam > 0 && Math.random() < 0.25 + jam * 0.6) || (rush > 0 && Math.random() < rush * 0.75)) {
+  if (isSmash) rush = 0;
+  if ((jam > 0 && Math.random() < 0.25 + jam * 0.6) || (rush > 0 && Math.random() < rush * 0.75) || (vsSmash && Math.random() < 0.7)) {
+    if (vsSmash) jam = Math.max(jam, 0.9);
     mishit = true; jam = Math.max(jam, rush * 0.8);
     tx += (Math.random() - .5) * 6 * jam + (Math.random() - .5) * 2;
     ty *= 0.45 + Math.random() * 0.95;
@@ -230,19 +248,20 @@ function hit(p){
   const lat = Math.abs(ball.x - p.x);
   let pf = lat < 0.3 ? 0.55 : lat < 0.55 ? 0.55 + (lat - 0.3) / 0.25 * 0.45 : 1.0;
   if (lat >= 0.55 && lat <= 1.2) pf = 1.08;
-  if (!lob) spd *= pf;
-  const weak = pf < 0.8;
+  if (!lob && !isSmash) spd *= pf;
+  const weak = pf < 0.8 && !isSmash;
+  if (isSmash) spd = (p.isHuman ? 40 : [32, 36, 40][level]) * (mishit ? 0.6 : 1);
   t = dist / spd;
   if (lob) t = Math.max(t, 1.7);
   const z = Math.max(ball.z, 0.4);
   const v = launch(ball.x, ball.y, z, tx, ty, t);
   Object.assign(ball, v); ball.z = z;
   if (netMiss) ball.vz *= 0.35;
+  ball.smash = isSmash && !mishit;
   p.tag = mishit ? '詰まった！' : weak ? '正面…' : power ? '強打！' : '';
   lastHitter = p; bounces = 0; isServe = false; rallyHits++;
   hitFrom = { x: ball.x, y: ball.y };
-  p.swing = 0.25;
-  p.stroke = (ball.x - p.x) * s >= 0 ? 'fore' : 'back';
+  p.swing = 0.25; p.st = 0; p.prep = 0;
   p.label = 0.9;
   for (const q of players) q.cool = 0;
   p.cool = 0.4;
@@ -264,7 +283,7 @@ function serve(p){
   const dist = Math.hypot(tx - ball.x, ty - ball.y);
   Object.assign(ball, launch(ball.x, ball.y, ball.z, tx, ty, dist / 26));
   ball.live = true; lastHitter = p; hitFrom = { x: p.x, y: p.y }; bounces = 0; isServe = true;
-  p.swing = 0.3; p.cool = 0.5;
+  p.swing = 0.3; p.cool = 0.5; p.shot = 'sm'; p.st = 0; p.prep = 0; ball.smash = false;
   state = 'rally'; showMsg('', 0);
 }
 
@@ -359,7 +378,22 @@ function update(dt){
     p.px = p.x; p.py = p.y;
     if (d < 0.5) { p.walk = (p.walk || 0) + d * 4.2; p.mv = (p.mv || 0) * 0.9 + (d / dt > 0.5 ? 1 : 0) * 0.1; }
   }
-  for (const p of players) { p.cool -= dt; p.swing -= dt; p.label = (p.label || 0) - dt; }
+  for (const p of players) {
+    p.cool -= dt; p.swing -= dt; p.label = (p.label || 0) - dt; p.st = (p.st ?? 9) + dt;
+    // 打つ前の準備動作（テイクバック）
+    let target = 0;
+    if (state === 'serve' && p === servingPlayer()) { target = 1; p.prepType = 'sm'; }
+    else if (state === 'rally' && lastHitter && lastHitter.team !== p.team && !(isServe && bounces === 0 && false) && p.st > 0.5) {
+      const d = Math.hypot(ball.x - p.x, ball.y - p.y);
+      const coming = (ball.y - p.y) * ball.vy < 0 || d < 1.6;
+      if (coming && d < 5) {
+        target = Math.max(0, Math.min(1, 1 - (d - 1.5) / 3));
+        const sd = (ball.x - p.x) * sideSign(p.team) >= 0 ? 'f' : 'b';
+        p.prepType = ball.z > 1.9 && ball.vz < 3 && bounces === 0 ? 'sm' : sd + (bounces === 0 && Math.abs(p.y) < 8 ? 'v' : 's');
+      }
+    }
+    p.prep = (p.prep || 0) + (target - (p.prep || 0)) * Math.min(1, dt * 10);
+  }
 
   if (state === 'serve') {
     const sp = servingPlayer();
@@ -396,7 +430,7 @@ function update(dt){
     if (sideSign(p.team) * ball.y < 0) continue;
     const reach = p.isHuman ? 1.5 : [1.0, 1.25, 1.45][level];
     const d = Math.hypot(ball.x - p.x, ball.y - p.y);
-    if (d < reach && ball.z < 2.6) { hit(p); break; }
+    if (d < reach * (ball.smash ? 0.65 : 1) && ball.z < 3.3) { hit(p); break; }
   }
 }
 
@@ -529,6 +563,32 @@ function shade(cx, cy, r){
   g.addColorStop(0, 'rgba(255,255,255,.55)'); g.addColorStop(0.45, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(0,0,0,.4)');
   return g;
 }
+const READY = { h: [0.05, 0.38, 0.95], r: [0, 0.45, 0.4], l: 'grip' };
+const POSES = {
+  fs: { back: { h: [0.65, -0.45, 1.0], r: [0.15, -0.65, 0.15], l: [0.05, 0.45, 1.05] },
+        hit:  { h: [0.55, 0.3, 0.9], r: [0.65, 0.1, 0.0], l: [-0.35, 0.35, 1.0] },
+        fol:  { h: [-0.3, 0.25, 1.55], r: [-0.25, -0.3, 0.4], l: [-0.4, 0.0, 1.0] } },
+  bs: { back: { h: [-0.6, -0.4, 0.95], r: [-0.15, -0.65, 0.15], l: 'grip' },
+        hit:  { h: [-0.4, 0.35, 0.9], r: [-0.65, 0.1, 0.0], l: 'grip' },
+        fol:  { h: [0.35, 0.15, 1.55], r: [0.25, -0.3, 0.4], l: 'grip' } },
+  fv: { back: { h: [0.55, 0.05, 1.2], r: [0.1, 0.0, 0.6], l: [-0.1, 0.45, 1.1] },
+        hit:  { h: [0.5, 0.5, 1.15], r: [0.25, 0.35, 0.45], l: [-0.3, 0.3, 1.0] },
+        fol:  { h: [0.42, 0.6, 1.05], r: [0.2, 0.4, 0.4], l: [-0.35, 0.2, 0.95] } },
+  bv: { back: { h: [-0.5, 0.05, 1.2], r: [-0.1, 0.0, 0.6], l: [-0.35, 0.1, 1.25] },
+        hit:  { h: [-0.45, 0.5, 1.15], r: [-0.25, 0.35, 0.45], l: [0.1, -0.1, 1.0] },
+        fol:  { h: [-0.35, 0.6, 1.05], r: [-0.2, 0.4, 0.4], l: [0.3, -0.15, 0.95] } },
+  sm: { back: { h: [0.4, -0.25, 1.65], r: [0.0, -0.35, -0.45], l: [-0.15, 0.25, 2.15] },
+        hit:  { h: [0.25, 0.25, 2.3], r: [0.05, 0.3, 0.6], l: [-0.35, 0.1, 1.3] },
+        fol:  { h: [-0.3, 0.4, 0.8], r: [-0.3, 0.25, -0.5], l: [-0.4, -0.1, 1.0] } },
+};
+const SHOT_NAME = { fs: 'フォアストローク', bs: 'バックストローク', fv: 'フォアボレー', bv: 'バックボレー', sm: 'スマッシュ' };
+function lerp3(a, b, t){ return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+function lerpPose(A, B, t){
+  t = Math.max(0, Math.min(1, t)); t = t * t * (3 - 2 * t);
+  const gl = (P0) => P0.l === 'grip' ? [P0.h[0] - 0.02, P0.h[1] - 0.04, P0.h[2] - 0.1] : P0.l;
+  const l = (A.l === 'grip' && B.l === 'grip') ? 'grip' : lerp3(gl(A), gl(B), t);
+  return { h: lerp3(A.h, B.h, t), r: lerp3(A.r, B.r, t), l };
+}
 function drawPlayer(p){
   const [x, y, f0] = P(p.x, p.y); curF = f0;
   const sg = sideSign(p.team), fwd = -sg, rs = sg; // fwd: ネット方向（画面y）, rs: 右手側（画面x）
@@ -549,42 +609,44 @@ function drawPlayer(p){
   const skin = '#e9b98f', armW = S(0.11);
   const back = [], front = [];
 
-  if (ready && !running) {
-    // 構え：両手でラケットを体の前に
-    const gy = bodyY + fwd * S(0.3) + S(0.12), ry0 = gy + fwd * S(0.5);
-    const racket = () => { line([[x, gy], [x, ry0]], S(0.08), '#333'); racketHead(x, ry0 + fwd * S(0.16), S(0.17), S(0.22), 0, '#333'); };
-    const arms = () => { line([[x - S(0.3), shY], [x - S(0.12), gy - fwd * S(0.05)], [x, gy]], armW, skin); line([[x + S(0.3), shY], [x + S(0.12), gy - fwd * S(0.05)], [x, gy]], armW, skin); };
-    if (fromBack) { back.push(racket, arms); } else { front.push(arms, racket); }
-  } else if (running) {
-    // 走り：脚と逆に腕を振る、ラケットは右手
+  // 体ローカル座標 [a=右手側, f=ネット方向, u=高さ] で腕とラケットを表現
+  const toS = (q) => [x + q[0] * rs * curF, y - bob - q[2] * curF * 0.95 + q[1] * fwd * curF * 0.45];
+  let pose;
+  const D = 0.38, st = p.st ?? 9;
+  if (st < D && POSES[p.shot]) {
+    const P0 = POSES[p.shot], k = st / D;
+    pose = k < 0.2 ? lerpPose(P0.back, P0.hit, k / 0.2) : lerpPose(P0.hit, P0.fol, (k - 0.2) / 0.8);
+  } else if (st < D + 0.3 && POSES[p.shot]) {
+    pose = lerpPose(POSES[p.shot].fol, READY, (st - D) / 0.3);
+  } else if ((p.prep || 0) > 0.03 && POSES[p.prepType]) {
+    pose = lerpPose(READY, POSES[p.prepType].back, p.prep);
+  } else if (mv > 0.35) {
     const a = Math.sin(ph) * mv;
-    for (const k of [1, -1]) {
-      const side = rs * k; // k=1 右腕
-      const sw = -a * k * (side > 0 ? 1 : -1) * (rs > 0 ? 1 : -1);
-      const hx = x + side * S(0.38), hy = shY + S(0.38) + fwd * sw * S(0.32);
-      const elb = [x + side * S(0.36), shY + S(0.2) + fwd * sw * S(0.12)];
-      const draw = () => {
-        line([[x + side * S(0.3), shY], elb, [hx, hy]], armW, skin);
-        if (k === 1) { const tx = hx + side * S(0.08), ty = hy + S(0.4) - fwd * sw * S(0.15); line([[hx, hy], [tx, ty]], S(0.08), '#333'); racketHead(tx + side * S(0.03), ty + S(0.15), S(0.13), S(0.18), side * 0.2, '#333'); }
-      };
-      (fromBack && fwd * sw < -0.1 * S(1) ? back : front).push(draw);
-    }
-  } else {
-    // スイング（フォア／バック）
-    const isBack = p.stroke === 'back';
-    const dir = (isBack ? -1 : 1) * rs;
-    const t = p.swing > 0 ? p.swing / 0.25 : 0;
-    const ang = -0.6 + t * 2.4;
-    const hx = x + S(0.3) * dir, hy = shY + S(0.15);
-    const rx = x + Math.cos(ang) * dir * S(0.85), ry = hy + Math.sin(ang) * S(0.45);
-    front.push(() => {
-      line([[x + S(0.3) * rs, shY], [hx, hy]], armW, skin);
-      if (isBack) line([[x - S(0.3) * rs, shY], [hx, hy]], armW, skin);
-      line([[hx, hy], [rx, ry]], S(0.08), isBack ? '#1a6fb0' : '#333');
-      racketHead(rx, ry, S(0.21), S(0.15), ang * dir, isBack ? '#1a6fb0' : '#333');
-    });
-  }
-
+    pose = { h: [0.38, a * 0.35, 0.85], r: [0.08, 0.2 + a * 0.2, -0.35], l: [-0.38, -a * 0.35, 0.85] };
+  } else pose = READY;
+  const lh = pose.l === 'grip' ? [pose.h[0] - 0.02, pose.h[1] - 0.04, pose.h[2] - 0.1] : pose.l;
+  const armDraw = (shA, hand) => () => {
+    const sh = [shA, 0, 1.25];
+    const el = [(sh[0] + hand[0]) / 2 + Math.sign(shA) * 0.12, (sh[1] + hand[1]) / 2 - 0.05, (sh[2] + hand[2]) / 2 - 0.12];
+    line([toS(sh), toS(el), toS(hand)], armW, skin);
+    ctx.fillStyle = skin; const [hx, hy] = toS(hand); ctx.beginPath(); ctx.arc(hx, hy, armW * 0.6, 0, 7); ctx.fill();
+  };
+  const racketDraw = () => {
+    const h = pose.h, rv = pose.r;
+    const neck = [h[0] + rv[0] * 0.45, h[1] + rv[1] * 0.45, h[2] + rv[2] * 0.45];
+    const ctr = [h[0] + rv[0] * 0.78, h[1] + rv[1] * 0.78, h[2] + rv[2] * 0.78];
+    const A = toS(h), B = toS(neck), C = toS(ctr);
+    line([A, B], S(0.07), '#222');
+    const rot = Math.atan2(C[1] - B[1], C[0] - B[0]);
+    const len = Math.max(S(0.1), Math.hypot(C[0] - B[0], C[1] - B[1]));
+    racketHead(C[0], C[1], Math.min(S(0.24), len * 0.75), S(0.15), rot, '#222');
+  };
+  const depth = (q) => q[1] * fwd * -1; // >0 なら画面奥側（背中側から見て体の向こう）
+  const layer = (q, fn) => ((fromBack ? q[1] > 0.12 : q[1] < -0.12) ? back : front).push(fn);
+  const rc = [pose.h[0] + pose.r[0] * 0.6, pose.h[1] + pose.r[1] * 0.6, pose.h[2] + pose.r[2] * 0.6];
+  layer(rc, racketDraw);
+  layer(pose.h, armDraw(0.3, pose.h));
+  layer(lh, armDraw(-0.3, lh));
   back.forEach(f => f());
   // 脚
   const stride = Math.sin(ph) * S(0.22) * mv, lift = S(0.09) * mv, hipY = y - S(0.62) - bob;
@@ -615,12 +677,12 @@ function drawPlayer(p){
   ctx.lineCap = 'butt';
   if (p.label > 0) {
     ctx.globalAlpha = Math.min(1, p.label * 2);
-    ctx.font = `bold ${S(0.7)}px sans-serif`; ctx.textAlign = 'center';
+    ctx.font = `bold ${Math.max(11 * devicePixelRatio, S(0.6))}px sans-serif`; ctx.textAlign = 'center';
     ctx.lineWidth = S(0.12); ctx.strokeStyle = '#000';
-    const t = (p.stroke === 'back' ? 'バック' : 'フォア') + (p.tag ? ' ' + p.tag : '');
+    const t = (SHOT_NAME[p.shot] || '') + (p.tag ? ' ' + p.tag : '');
     const ly = y - S(2.6) - S((0.9 - p.label) * 0.8);
     ctx.strokeText(t, x, ly);
-    ctx.fillStyle = p.tag === '詰まった！' ? '#ff6b6b' : p.tag === '正面…' ? '#c9c9c9' : p.tag ? '#ff9f1c' : p.stroke === 'back' ? '#5fd0ff' : '#ffd23f';
+    ctx.fillStyle = p.tag === '詰まった！' ? '#ff6b6b' : p.tag === '正面…' ? '#c9c9c9' : p.tag ? '#ff9f1c' : p.shot === 'sm' ? '#ff5fd2' : p.shot && p.shot[0] === 'b' ? '#5fd0ff' : '#ffd23f';
     ctx.fillText(t, x, ly);
     ctx.globalAlpha = 1;
   }
