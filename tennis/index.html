@@ -243,6 +243,7 @@ function hit(p){
   let pf = lat < 0.3 ? 0.55 : lat < 0.55 ? 0.55 + (lat - 0.3) / 0.25 * 0.45 : 1.0;
   if (lat >= 0.55 && lat <= 1.2) pf = 1.08;
   if (!lob && !isSmash) spd *= pf;
+  if (isVolley && !lob) spd *= 0.85;
   const weak = pf < 0.8 && !isSmash;
   if (isSmash) spd = (p.isHuman ? 32 : [25, 28, 31][level]) * (mishit ? 0.6 : 1);
   t = dist / spd;
@@ -252,6 +253,7 @@ function hit(p){
   Object.assign(ball, v); ball.z = z;
   if (netMiss) ball.vz *= 0.35;
   ball.smash = isSmash && !mishit;
+  ball.volley = isVolley;
   p.tag = close === 'float' ? 'ふわっ…' : close === 'good' ? 'ナイス反応！' : mishit ? '詰まった！' : weak ? '正面…' : power ? '強打！' : '';
   lastHitter = p; bounces = 0; isServe = false; rallyHits++;
   hitFrom = { x: ball.x, y: ball.y };
@@ -277,7 +279,7 @@ function serve(p){
   const dist = Math.hypot(tx - ball.x, ty - ball.y);
   Object.assign(ball, launch(ball.x, ball.y, ball.z, tx, ty, dist / 26));
   ball.live = true; lastHitter = p; hitFrom = { x: p.x, y: p.y }; bounces = 0; isServe = true;
-  p.swing = 0.3; p.cool = 0.5; p.shot = 'sm'; p.st = 0; p.prep = 0; ball.smash = false; p.serveSwing = true;
+  p.swing = 0.3; p.cool = 0.5; p.shot = 'sm'; p.st = 0; p.prep = 0; ball.smash = false; ball.volley = false; p.serveSwing = true;
   state = 'rally'; showMsg('', 0);
 }
 
@@ -468,7 +470,7 @@ function stepBall(dt, dead){
     }
   }
   if (ball.z <= 0) {
-    ball.z = 0; ball.vz = -ball.vz * 0.62; ball.vx *= 0.82; ball.vy *= 0.82;
+    ball.z = 0; ball.vz = -ball.vz * 0.62; const keep = ball.volley ? 0.55 : 0.68; ball.vx *= keep; ball.vy *= keep;
     bounces++;
     const opp = 1 - lastHitter.team;
     if (bounces === 1) {
@@ -705,7 +707,8 @@ function computePose(p){
   const ph = p.walk || 0, mv = p.mv || 0;
   let yaw = Math.max(-1, Math.min(1, (p.vxs || 0) * sideSign(p.team) / 5)) * 0.6;
   if (state === 'serve' && p === servingPlayer()) yaw = 0.9;
-  else if (p.serveSwing && (p.st ?? 9) < 0.5) { const st = p.st ?? 9; yaw = 0.9 * Math.max(0, 1 - st / 0.3) - 0.25 * Math.min(1, st / 0.3) * Math.max(0, 1 - (st - 0.3) / 0.2); }
+  else if (p.prepType === 'sm' && (p.prep || 0) > 0.03 && (p.st ?? 9) > 0.7) yaw = 0.9 * p.prep; // スマッシュの構えも横向き
+  else if (p.shot === 'sm' && (p.st ?? 9) < 0.5) { const st = p.st ?? 9; yaw = 0.9 * Math.max(0, 1 - st / 0.3) - 0.25 * Math.min(1, st / 0.3) * Math.max(0, 1 - (st - 0.3) / 0.2); }
   let pose;
   const D = 0.38, st = p.st ?? 9;
   if (st < D && POSES[p.shot]) {
