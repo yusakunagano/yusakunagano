@@ -199,7 +199,15 @@ function hit(p){
     tx = best * [0.5, 0.75, 0.9][level] + (Math.random() - .5) * err * 2;
     ty = -s * (HL - 1.5 - Math.random() * 4);
     if (p.role === 'front' && Math.abs(p.y) < 5) ty = -s * (4 + Math.random() * 5); // volley angle
-    lob = Math.random() < 0.08 && opps.some(o => o.role === 'front' && Math.abs(o.y) < 5);
+    // 相手が前に出過ぎたら、時々その頭を越えるロブを打つ
+    const netMan = opps.reduce((a, o) => Math.abs(o.y) < Math.abs(a.y) ? o : a, opps[0]);
+    const nd = Math.abs(netMan.y);
+    const lobChance = nd < 3.5 ? 0.35 : nd < 5.5 ? 0.2 : nd < 7 ? 0.08 : 0.02;
+    lob = Math.random() < lobChance && p.role !== 'front';
+    if (lob) {
+      ty = -s * (HL - 1.2 - Math.random() * 2.5);
+      tx = Math.max(-W + 0.8, Math.min(W - 0.8, netMan.x + (netMan.x > 0 ? -1 : 1) * (1 + Math.random() * 2)));
+    }
     // small chance of error
     if (Math.random() < [0.16, 0.09, 0.04][level]) { tx *= 1.35; ty *= 1.12; }
   }
@@ -247,7 +255,7 @@ function hit(p){
   const weak = pf < 0.8 && !isSmash;
   if (isSmash) spd = (p.isHuman ? 32 : [25, 28, 31][level]) * (mishit ? 0.6 : 1);
   t = dist / spd;
-  if (lob) t = Math.max(t, close === 'float' ? 1.4 : 1.7);
+  if (lob) t = Math.max(t, close === 'float' ? 1.4 : p.isHuman ? 1.7 : 1.9);
   const z = Math.max(ball.z, 0.4);
   const v = launch(ball.x, ball.y, z, tx, ty, t);
   Object.assign(ball, v); ball.z = z;
