@@ -51,6 +51,7 @@
       移動：矢印キー / WASD（スマホは画面をドラッグ）<br>
       ボールに近づくと自動で打ちます。打つ瞬間の ←→ でコースを狙えます。<br>
       打つ瞬間に ↑（前）を押すと強打（速いがブレる）。ボールに近すぎると詰まってミスしやすい。<br>
+      ボールを体の少し右か左でとらえると力が伝わる（正面だと弱い球）。<br>
       Shift を押しながら打つとロブ。<br>
       サーブ：スペース（スマホはタップ）<br>
       1セットマッチ（6ゲーム先取・2ゲーム差）
@@ -216,13 +217,19 @@ function hit(p){
   const dist = Math.hypot(tx - ball.x, ty - ball.y);
   let spd = lob ? 11 : (p.isHuman ? (power ? 40 : 22) : [17, 20, 24][level]);
   if (mishit) spd *= 0.6;
+  // 体の正面より少し横（0.55〜1.2m）で打つと力が伝わる。正面だと弱い球になる
+  const lat = Math.abs(ball.x - p.x);
+  let pf = lat < 0.3 ? 0.55 : lat < 0.55 ? 0.55 + (lat - 0.3) / 0.25 * 0.45 : 1.0;
+  if (lat >= 0.55 && lat <= 1.2) pf = 1.08;
+  if (!lob) spd *= pf;
+  const weak = pf < 0.8;
   t = dist / spd;
   if (lob) t = Math.max(t, 1.7);
   const z = Math.max(ball.z, 0.4);
   const v = launch(ball.x, ball.y, z, tx, ty, t);
   Object.assign(ball, v); ball.z = z;
   if (netMiss) ball.vz *= 0.35;
-  p.tag = mishit ? '詰まった！' : power ? '強打！' : '';
+  p.tag = mishit ? '詰まった！' : weak ? '正面…' : power ? '強打！' : '';
   lastHitter = p; bounces = 0; isServe = false; rallyHits++;
   hitFrom = { x: ball.x, y: ball.y };
   p.swing = 0.25;
@@ -591,7 +598,7 @@ function drawPlayer(p){
     const t = (p.stroke === 'back' ? 'バック' : 'フォア') + (p.tag ? ' ' + p.tag : '');
     const ly = y - S(2.6) - S((0.9 - p.label) * 0.8);
     ctx.strokeText(t, x, ly);
-    ctx.fillStyle = p.tag === '詰まった！' ? '#ff6b6b' : p.tag ? '#ff9f1c' : p.stroke === 'back' ? '#5fd0ff' : '#ffd23f';
+    ctx.fillStyle = p.tag === '詰まった！' ? '#ff6b6b' : p.tag === '正面…' ? '#c9c9c9' : p.tag ? '#ff9f1c' : p.stroke === 'back' ? '#5fd0ff' : '#ffd23f';
     ctx.fillText(t, x, ly);
     ctx.globalAlpha = 1;
   }
