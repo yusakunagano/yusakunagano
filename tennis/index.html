@@ -134,7 +134,7 @@ function newPoint(){
     // x from each player's perspective: right side = +x for team0, -x for team1
     if (p.role === 'back') { p.x = s * serveSide * 1.5 * (p.team === server ? 1 : 2.2); p.y = s * (HL + (p.team === server ? 0.4 : 0.6)); }
     else { p.x = -s * serveSide * 2.5; p.y = s * 3.5; }
-    p.hx = p.x; p.hy = p.y; p.cool = 0;
+    p.hx = p.x; p.hy = p.y; p.cool = 0; p.mvx = p.mvy = 0;
   }
   if (mode === 'singles') {
     const r = players.find(p => p.team !== server);
@@ -325,11 +325,23 @@ function bouncePoint(){
   const t = (-b - Math.sqrt(b * b - 4 * a * c)) / (2 * a);
   return { x: ball.x + ball.vx * t, y: ball.y + ball.vy * t, t };
 }
+// 加速度つきの移動：走り出しはゆっくり加速し、止まるときは素早く減速する
+const ACC = 6.5, DEC = 15;
+function accelerate(p, dvx, dvy, dt){
+  p.mvx = p.mvx || 0; p.mvy = p.mvy || 0;
+  const ex = dvx - p.mvx, ey = dvy - p.mvy, e = Math.hypot(ex, ey);
+  if (e > 1e-6) {
+    const speedingUp = Math.hypot(dvx, dvy) > Math.hypot(p.mvx, p.mvy) && (dvx * p.mvx + dvy * p.mvy) >= 0;
+    const lim = (speedingUp ? ACC : DEC) * dt, k = Math.min(1, lim / e);
+    p.mvx += ex * k; p.mvy += ey * k;
+  }
+  p.x += p.mvx * dt; p.y += p.mvy * dt;
+}
 function movePlayer(p, tx, ty, dt, spd){
   const dx = tx - p.x, dy = ty - p.y, d = Math.hypot(dx, dy);
-  if (d < 0.05) return;
-  const m = Math.min(d, spd * dt);
-  p.x += dx / d * m; p.y += dy / d * m;
+  if (d < 0.05) { accelerate(p, 0, 0, dt); return; }
+  const v = Math.min(spd, Math.sqrt(2 * DEC * 0.8 * d));
+  accelerate(p, dx / d * v, dy / d * v, dt);
 }
 function clampSide(p){
   const s = sideSign(p.team);
@@ -339,7 +351,9 @@ function clampSide(p){
   p.y = Math.min(p.y, HL + 3.5);
 }
 
+let gtime = 0;
 function update(dt){
+  gtime += dt;
   if (msgTimer > 0 && msgTimer < 900) { msgTimer -= dt; if (msgTimer <= 0 && state !== 'serve') msgEl.textContent = ''; }
   if (state === 'menu' || state === 'over') { if (state === 'over' && serveRequest) { serveRequest = false; state = 'menu'; menu.classList.remove('hidden'); msgEl.textContent = ''; } serveRequest = false; return; }
 
@@ -357,8 +371,8 @@ function update(dt){
   } else if (touch) {
     movePlayer(human, touch.x, touch.y, dt, hs);
   } else if (mx || my) {
-    const l = Math.hypot(mx, my); human.x += mx / l * hs * dt; human.y += my / l * hs * dt;
-  }
+    const l = Math.hypot(mx, my); accelerate(human, mx / l * hs, my / l * hs, dt);
+  } else accelerate(human, 0, 0, dt);
   clampSide(human);
 
   for (const p of players) {
@@ -707,7 +721,11 @@ function updateRig(R){
   const sg = sideSign(p.team);
   const rx = sg, fz = -sg; // 右手方向 = (sg,0,0)、ネット方向 = (0,0,-sg)
   const yc = Math.cos(yaw), ys = Math.sin(yaw);
-  const bob = Math.abs(Math.sin(ph)) * 0.04 * mv;
+  // 止まっている時も小刻みにステップ（フットワーク）
+  const idle = Math.max(0, 1 - mv / 0.35);
+  const fw = gtime * 9 + p.x * 0.7 + p.team * 1.3;
+  const crouch = 0.035 * idle;
+  const bob = Math.abs(Math.sin(ph)) * 0.04 * mv + Math.abs(Math.sin(fw)) * 0.03 * idle - crouch;
   const W = (a, f, u, noBob) => { const a2 = a * yc + f * ys, f2 = -a * ys + f * yc; return new V3(p.x + rx * a2, u + (noBob ? 0 : bob), p.y + fz * f2); };
   const heading = (T) => { const a2 = Math.cos(T + yaw), f2 = -Math.sin(T + yaw); return Math.atan2(-(fz * f2), rx * a2); }; // ローカル右軸の向き
   const twist = pose.tw || 0, twc = Math.cos(twist), tws = Math.sin(twist);
@@ -741,9 +759,11 @@ function updateRig(R){
   const stride = Math.sin(ph) * 0.28 * mv, lift = 0.1 * mv;
   [[-0.1, 1], [0.1, -1]].forEach(([la, k], i) => {
     const hip = W(la, 0, 0.66);
-    const ff = stride * k, fu = Math.max(0, Math.sin(ph) * k) * lift;
-    const foot = W(la * 1.15, ff, 0.05 + fu, true);
-    const knee = W(la * 1.1, ff * 0.5 + 0.09, 0.36 + fu * 0.5 + bob * 0.5, true);
+    const tap = Math.max(0, Math.sin(fw * 0.5 + i * Math.PI)) * 0.045 * idle;
+    const ff = stride * k, fu = Math.max(0, Math.sin(ph) * k) * lift + tap;
+    const wide = 1.15 + 0.5 * idle;
+    const foot = W(la * wide, ff, 0.05 + fu, true);
+    const knee = W(la * (1.1 + 0.45 * idle), ff * 0.5 + 0.09 + 0.06 * idle, 0.36 + fu * 0.5 + bob * 0.5, true);
     setLimb(R.th[i], hip, knee); setLimb(R.sh[i], knee, foot);
     R.knees[i].position.copy(knee);
     R.shoes[i].position.copy(foot).add(new V3(0, -0.01, 0)); R.shoes[i].position.addScaledVector(new V3(0, 0, fz), 0.04);
