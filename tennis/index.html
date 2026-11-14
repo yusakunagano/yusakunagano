@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>テニスゲーム</title>
+<style>
+  html,body{margin:0;height:100%;background:#1d3b2a;color:#fff;font-family:system-ui,sans-serif;overflow:hidden;touch-action:none}
+  #wrap{position:relative;width:100%;height:100%;display:flex;justify-content:center;align-items:center}
+  canvas{display:block}
+  #hud{position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.55);padding:6px 14px;border-radius:8px;font-size:15px;white-space:nowrap;text-align:center}
+  #msg{position:absolute;top:45%;left:50%;transform:translate(-50%,-50%);font-size:26px;font-weight:bold;text-shadow:0 2px 6px #000;pointer-events:none;text-align:center}
+  .menu{position:absolute;inset:0;background:rgba(10,30,20,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px}
+  .menu h1{margin:0 0 8px;font-size:34px}
+  .menu h2{margin:8px 0 0;font-size:18px;font-weight:normal;opacity:.85}
+  .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  button{font-size:18px;padding:12px 22px;border:none;border-radius:10px;background:#f2d43d;color:#222;font-weight:bold;cursor:pointer}
+  button.sel{outline:4px solid #fff}
+  button.sub{background:#cfd8d3}
+  .help{font-size:14px;opacity:.85;max-width:420px;text-align:center;line-height:1.6}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="hud"></div>
+  <div id="msg"></div>
+  <div class="menu" id="menu">
+    <h1>🎾 テニス</h1>
+    <h2>モードを選択</h2>
+    <div class="row">
+      <button data-mode="singles" class="sel">シングルス</button>
+      <button data-mode="doubles">ダブルス</button>
+    </div>
+    <div id="posBox" class="hidden" style="display:flex;flex-direction:column;align-items:center;gap:10px">
+      <h2>ポジション（ダブルス）</h2>
+      <div class="row">
+        <button data-pos="back" class="sel">後衛（ベースライン）</button>
+        <button data-pos="front">前衛（ネット）</button>
+      </div>
+    </div>
+    <h2>強さ</h2>
+    <div class="row">
+      <button data-lv="0" class="sub">やさしい</button>
+      <button data-lv="1" class="sub sel">ふつう</button>
+      <button data-lv="2" class="sub">つよい</button>
+    </div>
+    <button id="start" style="margin-top:10px;font-size:22px">試合開始</button>
+    <div class="help">
+      移動：矢印キー / WASD（スマホは画面をドラッグ）<br>
+      ボールに近づくと自動で打ちます。打つ瞬間の ←→ でコースを狙えます。<br>
+      Shift を押しながら打つとロブ。<br>
+      サーブ：スペース（スマホはタップ）<br>
+      1セットマッチ（6ゲーム先取・2ゲーム差）
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const hud = document.getElementById('hud'), msgEl = document.getElementById('msg');
+const menu = document.getElementById('menu');
+
+// ---- court constants (meters) ----
+const HL = 11.885, DW = 5.485, SW = 4.115, SL = 6.4, NET_H = 0.914, G = 9.8;
+const VIEW_W = 16, VIEW_H = 30;
+let scale = 20, ox = 0, oy = 0;
+function resize(){
+  const w = innerWidth, h = innerHeight;
+  scale = Math.min(w / VIEW_W, h / VIEW_H);
+  cv.width = VIEW_W * scale * devicePixelRatio; cv.height = VIEW_H * scale * devicePixelRatio;
+  cv.style.width = VIEW_W * scale + 'px'; cv.style.height = VIEW_H * scale + 'px';
+}
+addEventListener('resize', resize); resize();
+const sx = x => (x + VIEW_W / 2) * scale * devicePixelRatio;
+const sy = y => (y + VIEW_H / 2) * scale * devicePixelRatio;
+const S = v => v * scale * devicePixelRatio;
+
+// ---- settings ----
+let mode = 'singles', pos = 'back', level = 1;
+document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => {
+  mode = b.dataset.mode; sel('[data-mode]', b);
+  document.getElementById('posBox').classList.toggle('hidden', mode !== 'doubles');
+});
+document.querySelectorAll('[data-pos]').forEach(b => b.onclick = () => { pos = b.dataset.pos; sel('[data-pos]', b); });
+document.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => { level = +b.dataset.lv; sel('[data-lv]', b); });
+function sel(q, b){ document.querySelectorAll(q).forEach(x => x.classList.remove('sel')); b.classList.add('sel'); }
+document.getElementById('start').onclick = startMatch;
+
+// ---- input ----
+const keys = {};
+addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if (e.key === ' ') { e.preventDefault(); serveRequest = true; } });
+addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+let touch = null, serveRequest = false;
+function toCourt(t){ const r = cv.getBoundingClientRect(); return { x: (t.clientX - r.left) / scale - VIEW_W / 2, y: (t.clientY - r.top) / scale - VIEW_H / 2 }; }
+cv.addEventListener('touchstart', e => { touch = toCourt(e.touches[0]); serveRequest = true; e.preventDefault(); }, { passive: false });
+cv.addEventListener('touchmove', e => { touch = toCourt(e.touches[0]); e.preventDefault(); }, { passive: false });
+cv.addEventListener('touchend', () => { touch = null; });
+cv.addEventListener('mousedown', () => { serveRequest = true; });
+
+// ---- game state ----
+// team 0 = player side (bottom, y>0), team 1 = CPU (top, y<0)
+let players = [], ball, state = 'menu', timer = 0;
+let score, server, serveSide, faults, lastHitter, bounces, isServe, rallyHits, human;
+const SPEED = [5.2, 6.0, 6.8];
+
+function mkPlayer(team, role, isHuman, color){
+  return { team, role, isHuman, color, x: 0, y: 0, hx: 0, hy: 0, cool: 0, swing: 0 };
+}
+function startMatch(){
+  menu.classList.add('hidden');
+  players = [];
+  if (mode === 'singles') {
+    players.push(human = mkPlayer(0, 'back', true, '#2f7cf6'));
+    players.push(mkPlayer(1, 'back', false, '#e5483b'));
+  } else {
+    players.push(human = mkPlayer(0, pos, true, '#2f7cf6'));
+    players.push(mkPlayer(0, pos === 'back' ? 'front' : 'back', false, '#7fb2ff'));
+    players.push(mkPlayer(1, 'back', false, '#e5483b'));
+    players.push(mkPlayer(1, 'front', false, '#ff9a8f'));
+  }
+  score = { pts: [0, 0], games: [0, 0] };
+  server = 0; faults = 0;
+  newPoint();
+}
+function sideSign(team){ return team === 0 ? 1 : -1; }
+function servingPlayer(){ return players.find(p => p.team === server && p.role === 'back'); }
+
+function newPoint(){
+  const totalPts = score.pts[0] + score.pts[1];
+  serveSide = totalPts % 2 === 0 ? 1 : -1; // 1 = deuce side (right from server's view)
+  for (const p of players) {
+    const s = sideSign(p.team);
+    // x from each player's perspective: right side = +x for team0, -x for team1
+    if (p.role === 'back') { p.x = s * serveSide * 1.5 * (p.team === server ? 1 : 2.2); p.y = s * (HL + (p.team === server ? 0.4 : 0.6)); }
+    else { p.x = -s * serveSide * 2.5; p.y = s * 3.5; }
+    p.hx = p.x; p.hy = p.y; p.cool = 0;
+  }
+  if (mode === 'singles') {
+    const r = players.find(p => p.team !== server);
+    r.x = sideSign(r.team) * serveSide * 2.5;
+  }
+  const sp = servingPlayer();
+  ball = { x: sp.x, y: sp.y, z: 1.0, vx: 0, vy: 0, vz: 0, live: false };
+  bounces = 0; isServe = true; lastHitter = null; rallyHits = 0;
+  state = 'serve'; timer = 0;
+  showMsg(server === 0 && sp.isHuman ? 'スペース / タップでサーブ' : '', 0);
+}
+
+let msgTimer = 0;
+function showMsg(t, dur){ msgEl.textContent = t; msgTimer = dur; }
+
+// ---- hitting ----
+function launch(fromX, fromY, fromZ, tx, ty, t){
+  // ensure ball clears the net
+  for (let i = 0; i < 25; i++) {
+    const vx = (tx - fromX) / t, vy = (ty - fromY) / t, vz = (0.0 - fromZ + 0.5 * G * t * t) / t;
+    const tn = -fromY / vy;
+    const zn = fromZ + vz * tn - 0.5 * G * tn * tn;
+    if (tn <= 0 || tn >= t || zn > NET_H + 0.35) return { vx, vy, vz };
+    t *= 1.07;
+  }
+  const vx = (tx - fromX) / t, vy = (ty - fromY) / t, vz = (0.0 - fromZ + 0.5 * G * t * t) / t;
+  return { vx, vy, vz };
+}
+function hit(p){
+  const s = sideSign(p.team); // opponent court is y with sign -s
+  let tx, ty, t, lob = false;
+  const err = [1.6, 1.1, 0.7][level];
+  if (p.isHuman) {
+    let aim = 0;
+    if (keys['arrowleft'] || keys['a']) aim -= 1;
+    if (keys['arrowright'] || keys['d']) aim += 1;
+    if (touch) aim = Math.max(-1, Math.min(1, (touch.x - p.x) / 2));
+    if (aim === 0) aim = (ball.x - p.x) * 0.8; // natural angle from contact point
+    const W = mode === 'doubles' ? DW : SW;
+    tx = Math.max(-W + 0.4, Math.min(W - 0.4, aim * (W - 0.8) + (Math.random() - .5) * 0.6));
+    ty = -s * (HL - 1.6 - Math.random() * 2.5);
+    lob = keys['shift'];
+  } else {
+    const W = mode === 'doubles' ? DW : SW;
+    // aim away from opponents
+    const opps = players.filter(o => o.team !== p.team);
+    let best = 0, bestScore = -1;
+    for (let k = 0; k < 7; k++) {
+      const cx = -W + 0.7 + (2 * W - 1.4) * k / 6;
+      const d = Math.min(...opps.map(o => Math.abs(o.x - cx)));
+      if (d > bestScore) { bestScore = d; best = cx; }
+    }
+    tx = best * [0.5, 0.75, 0.9][level] + (Math.random() - .5) * err * 2;
+    ty = -s * (HL - 1.5 - Math.random() * 4);
+    if (p.role === 'front' && Math.abs(p.y) < 5) ty = -s * (4 + Math.random() * 5); // volley angle
+    lob = Math.random() < 0.08 && opps.some(o => o.role === 'front' && Math.abs(o.y) < 5);
+    // small chance of error
+    if (Math.random() < [0.16, 0.09, 0.04][level]) { tx *= 1.35; ty *= 1.12; }
+  }
+  const dist = Math.hypot(tx - ball.x, ty - ball.y);
+  const spd = lob ? 11 : (p.isHuman ? 22 : [17, 20, 24][level]);
+  t = dist / spd;
+  if (lob) t = Math.max(t, 1.7);
+  const z = Math.max(ball.z, 0.4);
+  const v = launch(ball.x, ball.y, z, tx, ty, t);
+  Object.assign(ball, v); ball.z = z;
+  lastHitter = p; bounces = 0; isServe = false; rallyHits++;
+  p.swing = 0.25;
+  for (const q of players) q.cool = 0;
+  p.cool = 0.4;
+}
+function serve(p){
+  const s = sideSign(p.team);
+  // target: diagonal service box on opponent side
+  const boxX = -s * serveSide; // opposite side across
+  const W = SW;
+  let tx = boxX * (0.6 + Math.random() * (W - 1.2));
+  let ty = -s * (SL - 0.7 - Math.random() * 2.2);
+  if (!p.isHuman && Math.random() < [0.3, 0.2, 0.12][level]) ty -= s * 1.0; // fault chance
+  if (p.isHuman) {
+    if (keys['arrowleft'] || keys['a']) tx = boxX > 0 ? 0.5 : -W + 0.5;
+    if (keys['arrowright'] || keys['d']) tx = boxX > 0 ? W - 0.5 : -0.5;
+    if (Math.random() < 0.12) ty -= s * 0.9;
+  }
+  ball.x = p.x; ball.y = p.y; ball.z = 2.6;
+  const dist = Math.hypot(tx - ball.x, ty - ball.y);
+  Object.assign(ball, launch(ball.x, ball.y, ball.z, tx, ty, dist / 26));
+  ball.live = true; lastHitter = p; bounces = 0; isServe = true;
+  p.swing = 0.3; p.cool = 0.5;
+  state = 'rally'; showMsg('', 0);
+}
+
+// ---- point resolution ----
+function pointTo(team, reason){
+  if (state === 'dead') return;
+  state = 'dead'; timer = 1.6; ball.live = false;
+  showMsg(reason + (team === 0 ? '  あなたのポイント！' : '  CPUのポイント'), 1.6);
+  score.pts[team]++;
+  const [a, b] = score.pts;
+  if ((a >= 4 || b >= 4) && Math.abs(a - b) >= 2) {
+    const w = a > b ? 0 : 1;
+    score.games[w]++; score.pts = [0, 0]; server = 1 - server;
+    const [g0, g1] = score.games;
+    if ((g0 >= 6 || g1 >= 6) && Math.abs(g0 - g1) >= 2) {
+      state = 'over'; timer = 0;
+      showMsg((g0 > g1 ? '🏆 あなたの勝ち！' : 'CPUの勝ち…') + `  ${g0}-${g1}\nクリック/タップでメニュー`, 999);
+      return;
+    }
+    showMsg((w === 0 ? 'あなたが' : 'CPUが') + 'ゲームを取りました', 1.6);
+  }
+}
+function fault(reason){
+  state = 'dead'; ball.live = false; timer = 1.2;
+  faults++;
+  if (faults >= 2) { faults = 0; state = 'rally'; pointTo(1 - server, 'ダブルフォルト'); return; }
+  showMsg('フォルト（' + reason + '）', 1.2);
+  pendingSecondServe = true;
+}
+let pendingSecondServe = false;
+
+function inCourt(x, y, team){ // does (x,y) lie in team's court half?
+  const W = mode === 'doubles' ? DW : SW;
+  return Math.abs(x) <= W + 0.05 && sideSign(team) * y >= 0 && Math.abs(y) <= HL + 0.05;
+}
+function inServiceBox(x, y, recvTeam){
+  const s = sideSign(recvTeam);
+  const boxSign = -sideSign(server) * serveSide; // x-sign of target box
+  return s * y >= 0 && s * y <= SL + 0.05 && x * boxSign >= -0.05 && Math.abs(x) <= SW + 0.05;
+}
+
+// ---- update ----
+function predictAtY(yLine){
+  if (Math.abs(ball.vy) < 0.01) return ball.x;
+  const t = (yLine - ball.y) / ball.vy;
+  return t > 0 ? ball.x + ball.vx * t : ball.x;
+}
+function bouncePoint(){
+  // solve z(t)=0
+  const a = -0.5 * G, b = ball.vz, c = ball.z;
+  const t = (-b - Math.sqrt(b * b - 4 * a * c)) / (2 * a);
+  return { x: ball.x + ball.vx * t, y: ball.y + ball.vy * t, t };
+}
+function movePlayer(p, tx, ty, dt, spd){
+  const dx = tx - p.x, dy = ty - p.y, d = Math.hypot(dx, dy);
+  if (d < 0.05) return;
+  const m = Math.min(d, spd * dt);
+  p.x += dx / d * m; p.y += dy / d * m;
+}
+function clampSide(p){
+  const s = sideSign(p.team);
+  if (s * p.y < 0.6) p.y = s * 0.6;
+  p.y = Math.max(-HL - 4, Math.min(HL + 4, p.y));
+  p.x = Math.max(-VIEW_W / 2 + 0.3, Math.min(VIEW_W / 2 - 0.3, p.x));
+}
+
+function update(dt){
+  if (msgTimer > 0 && msgTimer < 900) { msgTimer -= dt; if (msgTimer <= 0 && state !== 'serve') msgEl.textContent = ''; }
+  if (state === 'menu' || state === 'over') { if (state === 'over' && serveRequest) { serveRequest = false; state = 'menu'; menu.classList.remove('hidden'); msgEl.textContent = ''; } serveRequest = false; return; }
+
+  // human movement
+  let mx = 0, my = 0;
+  if (keys['arrowleft'] || keys['a']) mx -= 1;
+  if (keys['arrowright'] || keys['d']) mx += 1;
+  if (keys['arrowup'] || keys['w']) my -= 1;
+  if (keys['arrowdown'] || keys['s']) my += 1;
+  const hs = 6.2;
+  if (state === 'serve' && servingPlayer() === human) {
+    human.x += mx * hs * dt * 0.5;
+    const lim = serveSide > 0 ? [0.3, SW] : [-SW, -0.3];
+    human.x = Math.max(lim[0], Math.min(lim[1], human.x)); human.y = HL + 0.4;
+  } else if (touch) {
+    movePlayer(human, touch.x, touch.y, dt, hs);
+  } else if (mx || my) {
+    const l = Math.hypot(mx, my); human.x += mx / l * hs * dt; human.y += my / l * hs * dt;
+  }
+  clampSide(human);
+
+  for (const p of players) { p.cool -= dt; p.swing -= dt; }
+
+  if (state === 'serve') {
+    const sp = servingPlayer();
+    ball.x = sp.x + 0.3 * sideSign(sp.team); ball.y = sp.y; ball.z = 1.0;
+    timer += dt;
+    aiMove(dt);
+    if (sp.isHuman ? serveRequest : timer > 1.1) serve(sp);
+    serveRequest = false;
+    return;
+  }
+  serveRequest = false;
+
+  if (state === 'dead') {
+    timer -= dt;
+    stepBall(dt, true);
+    aiMove(dt);
+    if (timer <= 0) {
+      if (pendingSecondServe) { pendingSecondServe = false; const keep = faults; newPoint(); faults = keep; showMsg(servingPlayer().isHuman ? 'セカンドサーブ' : '', 0); }
+      else { faults = 0; newPoint(); }
+    }
+    return;
+  }
+
+  // rally
+  aiMove(dt);
+  stepBall(dt, false);
+  if (state !== 'rally') return;
+
+  // hitting check
+  for (const p of players) {
+    if (p.cool > 0 || lastHitter === null) continue;
+    if (lastHitter.team === p.team) continue;
+    if (isServe && bounces === 0) continue; // must let serve bounce
+    if (sideSign(p.team) * ball.y < 0) continue;
+    const reach = p.isHuman ? 1.5 : [1.0, 1.25, 1.45][level];
+    const d = Math.hypot(ball.x - p.x, ball.y - p.y);
+    if (d < reach && ball.z < 2.6) { hit(p); break; }
+  }
+}
+
+function stepBall(dt, dead){
+  const prevY = ball.y;
+  ball.x += ball.vx * dt; ball.y += ball.vy * dt;
+  ball.vz -= G * dt; ball.z += ball.vz * dt;
+  if (!dead && !lastHitter) return;
+  if (dead) { if (ball.z < 0) { ball.z = 0; ball.vz = -ball.vz * 0.5; ball.vx *= .8; ball.vy *= .8; } return; }
+  // net
+  if (prevY * ball.y < 0 || ball.y === 0) {
+    if (ball.z < NET_H && Math.abs(ball.x) < DW + 0.9) {
+      ball.vy *= -0.15; ball.vx *= 0.2;
+      ball.y = Math.sign(prevY) * 0.05;
+      if (isServe) fault('ネット'); else pointTo(1 - lastHitter.team, 'ネット');
+      return;
+    }
+  }
+  if (ball.z <= 0) {
+    ball.z = 0; ball.vz = -ball.vz * 0.62; ball.vx *= 0.82; ball.vy *= 0.82;
+    bounces++;
+    const opp = 1 - lastHitter.team;
+    if (bounces === 1) {
+      if (isServe) { if (!inServiceBox(ball.x, ball.y, opp)) { fault('アウト'); return; } }
+      else if (!inCourt(ball.x, ball.y, opp)) { pointTo(opp, 'アウト'); return; }
+    } else if (bounces >= 2) {
+      pointTo(lastHitter.team, isServe && rallyHits === 0 ? 'サービスエース' : 'ツーバウンド');
+      return;
+    }
+  }
+  if (Math.abs(ball.y) > HL + 8 || Math.abs(ball.x) > 12) {
+    if (bounces === 0) { if (isServe) fault('アウト'); else pointTo(1 - lastHitter.team, 'アウト'); }
+    else pointTo(lastHitter.team, 'エース');
+  }
+}
+
+function aiMove(dt){
+  const spdAI = SPEED[level];
+  for (const p of players) {
+    if (p.isHuman) continue;
+    const s = sideSign(p.team);
+    let tx = p.hx, ty = p.hy;
+    const incoming = state === 'rally' && lastHitter && lastHitter.team !== p.team;
+    if (state === 'serve') {
+      if (p === servingPlayer()) continue;
+      tx = p.hx; ty = p.hy;
+    } else if (incoming) {
+      const mates = players.filter(q => q.team === p.team);
+      // home line
+      const lineY = p.role === 'front' ? s * 3.2 : s * (HL - 0.3);
+      if (p.role === 'front') {
+        tx = predictAtY(lineY); ty = lineY;
+        // if lob over head, retreat
+        if (ball.vz > 6) ty = s * 6;
+      } else {
+        const bp = bouncePoint();
+        if (bounces === 0 && s * bp.y > 0 && s * bp.y < HL - 3) {
+          // short ball: move up to it
+          tx = bp.x + ball.vx * 0.35; ty = bp.y + ball.vy * 0.35;
+        } else if (bounces === 0) { tx = predictAtY(lineY); ty = lineY; }
+        else { tx = ball.x + ball.vx * 0.25; ty = ball.y + ball.vy * 0.25; }
+        // in doubles, back leaves volleys within partner's reach
+        const front = mates.find(q => q !== p && q.role === 'front');
+        if (front && bounces === 0 && Math.abs(predictAtY(front.y) - front.x) < 1.0 && ball.vz < 4) { tx = p.hx * 0.3 + tx * 0.7; }
+      }
+    } else {
+      // recover to formation, shading toward ball
+      const bx = ball.x * 0.4;
+      if (p.role === 'front') { tx = bx * 0.8 + (mode === 'doubles' ? 0 : 0); ty = s * 3.5; }
+      else { tx = bx; ty = s * (HL - 0.3); }
+      if (mode === 'doubles' && p.role === 'back') tx = bx * 0.6;
+    }
+    movePlayer(p, tx, ty, dt, spdAI);
+    clampSide(p);
+  }
+}
+
+// ---- render ----
+function draw(){
+  ctx.fillStyle = '#2e6b45'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = '#3a7d54'; ctx.fillRect(sx(-DW), sy(-HL), S(DW * 2), S(HL * 2));
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.5, S(0.07));
+  ctx.strokeRect(sx(-DW), sy(-HL), S(DW * 2), S(HL * 2));
+  ctx.beginPath();
+  ctx.moveTo(sx(-SW), sy(-HL)); ctx.lineTo(sx(-SW), sy(HL));
+  ctx.moveTo(sx(SW), sy(-HL)); ctx.lineTo(sx(SW), sy(HL));
+  ctx.moveTo(sx(-SW), sy(-SL)); ctx.lineTo(sx(SW), sy(-SL));
+  ctx.moveTo(sx(-SW), sy(SL)); ctx.lineTo(sx(SW), sy(SL));
+  ctx.moveTo(sx(0), sy(-SL)); ctx.lineTo(sx(0), sy(SL));
+  ctx.moveTo(sx(0), sy(-HL)); ctx.lineTo(sx(0), sy(-HL + 0.3));
+  ctx.moveTo(sx(0), sy(HL)); ctx.lineTo(sx(0), sy(HL - 0.3));
+  ctx.stroke();
+  // singles: dim doubles alleys
+  if (mode === 'singles') { ctx.fillStyle = 'rgba(0,0,0,.12)'; ctx.fillRect(sx(-DW), sy(-HL), S(DW - SW), S(HL * 2)); ctx.fillRect(sx(SW), sy(-HL), S(DW - SW), S(HL * 2)); }
+
+  const drawables = [];
+  for (const p of players) drawables.push({ y: p.y, f: () => drawPlayer(p) });
+  drawables.push({ y: ball.y, f: drawBall });
+  drawables.push({ y: 0, f: drawNet });
+  drawables.sort((a, b) => a.y - b.y).forEach(d => d.f());
+
+  // HUD
+  const names = ['0', '15', '30', '40'];
+  const [a, b] = score ? score.pts : [0, 0];
+  let pt;
+  if (a >= 3 && b >= 3) pt = a === b ? 'デュース' : (a > b ? 'Ad あなた' : 'Ad CPU');
+  else pt = `${names[Math.min(a, 3)]} - ${names[Math.min(b, 3)]}`;
+  if (score) hud.innerHTML = `あなた <b>${score.games[0]}</b> - <b>${score.games[1]}</b> CPU　|　${pt}　${server === 0 ? '🎾あなたのサーブ' : '🎾CPUのサーブ'}${faults ? '（2nd）' : ''}`;
+}
+function drawNet(){
+  ctx.fillStyle = 'rgba(255,255,255,.35)';
+  ctx.fillRect(sx(-DW - 0.9), sy(0) - S(NET_H) * 0.5, S((DW + 0.9) * 2), S(NET_H) * 0.5);
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = S(0.08);
+  ctx.beginPath(); ctx.moveTo(sx(-DW - 0.9), sy(0) - S(NET_H) * 0.5); ctx.lineTo(sx(DW + 0.9), sy(0) - S(NET_H) * 0.5); ctx.stroke();
+}
+function drawPlayer(p){
+  const x = sx(p.x), y = sy(p.y);
+  ctx.fillStyle = 'rgba(0,0,0,.3)';
+  ctx.beginPath(); ctx.ellipse(x, y, S(0.5), S(0.22), 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = p.color;
+  ctx.beginPath(); ctx.ellipse(x, y - S(0.7), S(0.35), S(0.6), 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f3c9a0';
+  ctx.beginPath(); ctx.arc(x, y - S(1.45), S(0.25), 0, Math.PI * 2); ctx.fill();
+  // racket
+  const sw = p.swing > 0 ? (p.swing / 0.25) : 0;
+  const ang = -0.6 + sw * 2.4;
+  ctx.strokeStyle = '#333'; ctx.lineWidth = S(0.08);
+  const rx = x + Math.cos(ang) * S(0.75), ry = y - S(0.8) + Math.sin(ang) * S(0.4);
+  ctx.beginPath(); ctx.moveTo(x + S(0.25), y - S(0.8)); ctx.lineTo(rx, ry); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(rx, ry, S(0.2), S(0.14), ang, 0, Math.PI * 2); ctx.stroke();
+  if (p.isHuman) { ctx.fillStyle = '#fff'; ctx.font = `bold ${S(0.55)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('YOU', x, y - S(1.9)); }
+}
+function drawBall(){
+  if (!ball) return;
+  ctx.fillStyle = 'rgba(0,0,0,.35)';
+  ctx.beginPath(); ctx.ellipse(sx(ball.x), sy(ball.y), S(0.14), S(0.08), 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#e8ff3a';
+  ctx.beginPath(); ctx.arc(sx(ball.x), sy(ball.y) - S(ball.z), S(0.14 + Math.max(0, ball.z) * 0.015), 0, Math.PI * 2); ctx.fill();
+}
+
+let last = performance.now();
+function loop(now){
+  let dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const steps = 4;
+  for (let i = 0; i < steps; i++) update(dt / steps);
+  if (ball) draw(); else { ctx.fillStyle = '#2e6b45'; ctx.fillRect(0, 0, cv.width, cv.height); }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
