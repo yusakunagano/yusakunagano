@@ -154,24 +154,42 @@ let touch = null, serveRequest = false;
 let actx = null;
 function audio(){ if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } } if (actx.state === 'suspended') actx.resume(); return actx; }
 addEventListener('pointerdown', audio, { once: false, passive: true }); addEventListener('keydown', audio, { passive: true });
+// 本物の打球音に近づける：ピッチが動く「ピコッ」ではなく、ガットにボールが当たる短い「ボコッ」という破裂音
+// ＝ 帯域を絞ったノイズの一瞬のアタック ＋ 低い胴鳴り ＋ ごく短いガットの響き ＋ スタジアムの軽い残響
+let noiseBuf = null, verb = null;
+function noise(a){ if (!noiseBuf) { noiseBuf = a.createBuffer(1, a.sampleRate * 0.25, a.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; } const n = a.createBufferSource(); n.buffer = noiseBuf; return n; }
+function out(a){
+  if (!verb) { // 軽い残響（短いディレイの繰り返し）
+    const dry = a.createGain(), d1 = a.createDelay(0.5), fb = a.createGain(), lp = a.createBiquadFilter(), wet = a.createGain();
+    d1.delayTime.value = 0.085; fb.gain.value = 0.32; lp.type = 'lowpass'; lp.frequency.value = 2400; wet.gain.value = 0.18;
+    dry.connect(a.destination); dry.connect(d1); d1.connect(lp); lp.connect(fb); fb.connect(d1); lp.connect(wet); wet.connect(a.destination);
+    verb = dry;
+  }
+  return verb;
+}
+function env(a, g, t, peak, dec){ g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + 0.0015); g.gain.exponentialRampToValueAtTime(0.0001, t + dec); }
 function playHit(power = 1){
   const a = actx; if (!a || a.state !== 'running') return;
-  const t = a.currentTime, g = a.createGain();
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5 * Math.min(1.3, power), t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-  const o = a.createOscillator(); o.type = 'triangle'; o.frequency.setValueAtTime(950 + 250 * power, t); o.frequency.exponentialRampToValueAtTime(380, t + 0.1);
-  // ガットの「パコッ」というアタック音（短いノイズ）
-  const n = a.createBufferSource(), buf = a.createBuffer(1, a.sampleRate * 0.03, a.sampleRate), d = buf.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) ** 2;
-  n.buffer = buf; const f = a.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2200; f.Q.value = 1.2;
-  o.connect(g); n.connect(f); f.connect(g); g.connect(a.destination);
-  o.start(t); o.stop(t + 0.13); n.start(t);
+  const t = a.currentTime, o = out(a), v = Math.min(1.3, power);
+  // アタック：中高域のノイズを数ミリ秒だけ
+  const n = noise(a), bp = a.createBiquadFilter(), gn = a.createGain();
+  bp.type = 'bandpass'; bp.frequency.value = 1100 + 500 * v + Math.random() * 200; bp.Q.value = 0.9;
+  env(a, gn, t, 0.9 * v, 0.035); n.connect(bp); bp.connect(gn); gn.connect(o); n.start(t, Math.random() * 0.2); n.stop(t + 0.05);
+  // 胴鳴り：低い音を一瞬（ボールのつぶれる感じ）
+  const b = a.createOscillator(), gb = a.createGain(); b.type = 'sine'; b.frequency.setValueAtTime(190 + 40 * v, t);
+  env(a, gb, t, 0.35 * v, 0.045); b.connect(gb); gb.connect(o); b.start(t); b.stop(t + 0.06);
+  // ガットの響き：ごく小さく短い
+  const s1 = a.createOscillator(), gs = a.createGain(); s1.type = 'sine'; s1.frequency.value = 520 + Math.random() * 60;
+  env(a, gs, t, 0.08 * v, 0.07); s1.connect(gs); gs.connect(o); s1.start(t); s1.stop(t + 0.08);
 }
 function playBounce(){
   const a = actx; if (!a || a.state !== 'running') return;
-  const t = a.currentTime, g = a.createGain(), o = a.createOscillator();
-  o.type = 'sine'; o.frequency.setValueAtTime(240, t); o.frequency.exponentialRampToValueAtTime(110, t + 0.08);
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
-  o.connect(g); g.connect(a.destination); o.start(t); o.stop(t + 0.11);
+  const t = a.currentTime, o = out(a);
+  const n = noise(a), lp = a.createBiquadFilter(), gn = a.createGain();
+  lp.type = 'lowpass'; lp.frequency.value = 900; env(a, gn, t, 0.35, 0.04);
+  n.connect(lp); lp.connect(gn); gn.connect(o); n.start(t, Math.random() * 0.2); n.stop(t + 0.05);
+  const b = a.createOscillator(), gb = a.createGain(); b.type = 'sine'; b.frequency.value = 130;
+  env(a, gb, t, 0.18, 0.05); b.connect(gb); gb.connect(o); b.start(t); b.stop(t + 0.06);
 }
 const NOINP = { mx: 0, my: 0, left: false, right: false, power: false, lob: false, drop: false, slice: false, touch: null };
 // この端末の操作（画面の向きのまま。手前=自分側）
