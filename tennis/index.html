@@ -758,7 +758,8 @@ function hit(p, reach = 1.5){
     dist = Math.hypot(tx - ball.x, ty - ball.y);
     p.lungeT = 0; p.lungeDir = Math.sign((ball.x - p.x) * s) || 1; // 体を傾ける向き（その人の右=+1）
   }
-  if (isAirK && !lob && !drop && !mishit) { spd *= 1.3; ty = -s * (HL - 1.2 - Math.random() * 2); }
+  const approachShot = isAirK && (p.fwdRun || 0) > 3;
+  if (isAirK && !lob && !drop && !mishit) { spd *= approachShot ? 1.5 : 1.3; ty = -s * (HL - 1.2 - Math.random() * 2); } // 長く走ってきたエアKはさらに強いアプローチショット
   t = dist / spd;
   if (lob) t = Math.max(t, close === 'float' ? 1.4 : lunge ? 1.3 : p.isHuman ? 1.7 : 1.9);
   if (lunge) t = Math.max(t, dist / (8 + Math.random() * 3));
@@ -768,8 +769,9 @@ function hit(p, reach = 1.5){
   if (netMiss) ball.vz *= 0.35;
   ball.smash = isSmash && !mishit; ball.curve = 0;
   if (slice && !isSmash && !lob && !mishit) ball.curve = (side === 'f' ? -1 : 1) * s * 1.4; // スライスは少し曲がる（フォアは打った人の左へ、バックは右へ）
+  p.fwdRun = 0;
   ball.volley = isVolley; ball.spin = slice && !isSmash ? 'slice' : null;
-  p.tag = lunge ? 'ギリギリ…' : slice && !isSmash ? 'スライス' : close === 'ctrl' ? 'ブレた！' : drop && !isSmash ? 'ドロップ' : close === 'float' ? 'ふわっ…' : close === 'good' ? 'ナイス反応！' : mishit ? '詰まった！' : weak ? '正面…' : power ? '強打！' : '';
+  p.tag = approachShot && !mishit ? 'アプローチ！' : lunge ? 'ギリギリ…' : slice && !isSmash ? 'スライス' : close === 'ctrl' ? 'ブレた！' : drop && !isSmash ? 'ドロップ' : close === 'float' ? 'ふわっ…' : close === 'good' ? 'ナイス反応！' : mishit ? '詰まった！' : weak ? '正面…' : power ? '強打！' : '';
   lastHitter = p; bounces = 0; isServe = false; rallyHits++;
   hitFrom = { x: ball.x, y: ball.y };
   p.prepType = p.prepType && p.prepType === p.shot ? p.prepType : p.shot;
@@ -932,7 +934,9 @@ function update(dt){
     if (d < 0.5) { p.walk = (p.walk || 0) + d * 3.8; p.mv = (p.mv || 0) * 0.9 + (d / dt > 0.5 ? 1 : 0) * 0.1; }
   }
   for (const p of players) {
-    p.cool -= dt; p.swing -= dt; p.label = (p.label || 0) - dt; p.st = (p.st ?? 9) + dt; p.jumpT = (p.jumpT ?? 9) + dt; p.lungeT = (p.lungeT ?? 9) + dt; p.fallT = (p.fallT ?? 9) + dt; if (p.jumpT > 0.9) p.akPlanned = false;
+    p.cool -= dt; p.swing -= dt; p.label = (p.label || 0) - dt; p.st = (p.st ?? 9) + dt; p.jumpT = (p.jumpT ?? 9) + dt; p.lungeT = (p.lungeT ?? 9) + dt; p.fallT = (p.fallT ?? 9) + dt;
+    { const fv = -(p.vys || 0) * sideSign(p.team); p.fwdRun = fv > 1.2 ? (p.fwdRun || 0) + fv * dt : Math.max(0, (p.fwdRun || 0) - dt * 4); } // 前に長く走った距離
+    if (p.jumpT > 0.9) p.akPlanned = false;
     // 打つ前の準備動作（テイクバック）
     let target = 0;
     if (state === 'serve' && p === servingPlayer()) { target = tossing ? 1 : 0; p.prepType = 'sm'; }
@@ -947,10 +951,11 @@ function update(dt){
         const lat = Math.abs(ball.x - p.x);
         // 跳んでから少し遅れて（頂点を過ぎたあたりで）打てるよう、ボールが届く約0.4秒前に跳ぶ
         const vc = -((ball.x - p.x) * ball.vx + (ball.y - p.y) * ball.vy) / Math.max(0.1, d), tti = (d - 1.2) / Math.max(0.5, vc);
-        const approach = Math.abs(p.y) < HL - 2.5 || -(p.vys || 0) * sideSign(p.team) > 1.0; // 前に出て打つ（アプローチ）
-        if (bounces === 1 && ball.z > (approach ? 0.8 : 1.0) && d < 4 && tti < 0.42 && lat > 0.3 && lat < 1.5 && (p.jumpT ?? 9) > 1.2 && p.akDecided !== rallyHits) {
+        const longRun = (p.fwdRun || 0) > 3; // 前へ長く走ってきた
+        const approach = longRun || Math.abs(p.y) < HL - 2.5 || -(p.vys || 0) * sideSign(p.team) > 1.0; // 前に出て打つ（アプローチ）
+        if (bounces === 1 && ball.z > (longRun ? 0.6 : approach ? 0.8 : 1.0) && d < 4 && tti < 0.42 && lat > 0.3 && lat < 1.5 && (p.jumpT ?? 9) > 1.2 && p.akDecided !== rallyHits) {
           p.akDecided = rallyHits;
-          const chance = p.isHuman ? (approach ? 0.95 : 0.8) : [0.2, 0.35, 0.5][level] * (approach ? 1.8 : 1);
+          const chance = longRun ? (p.isHuman ? 1 : 0.85) : p.isHuman ? (approach ? 0.95 : 0.8) : [0.2, 0.35, 0.5][level] * (approach ? 1.8 : 1);
           if (Math.random() < chance) { p.jumpT = 0; p.jumpAmp = 0.6; p.akPlanned = true; p.akSide = sd; }
         }
       }
