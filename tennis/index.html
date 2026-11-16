@@ -1430,7 +1430,11 @@ function updateRig(R){
   const idle = Math.max(0, 1 - mv / 0.35);
   const fw = gtime * 9 + p.x * 0.7 + p.team * 1.3;
   const crouch = 0.035 * idle;
-  const bob = Math.abs(Math.sin(ph)) * 0.04 * mv + Math.abs(Math.sin(fw)) * 0.03 * idle * (st0 > 0.85 ? 1 : 0) - crouch - (wideOK ? 0.06 : 0) * idle - (pose.cr || 0) - (receiving ? 0.07 : 0);
+  // エアKのジャンプ：空中では脚をピンと伸ばし、着地でひざを深く曲げて衝撃を受ける
+  const jt0 = p.jumpT ?? 9, bigJump = (p.jumpAmp ?? 0.5) >= 0.45;
+  const airStraight = bigJump && jt0 > 0.05 && jt0 < 0.63;
+  const landK = bigJump && jt0 >= 0.63 && jt0 < 1.0 ? Math.sin(Math.PI * (jt0 - 0.63) / 0.37) * 0.3 : 0;
+  const bob = -landK + Math.abs(Math.sin(ph)) * 0.04 * mv + Math.abs(Math.sin(fw)) * 0.03 * idle * (st0 > 0.85 ? 1 : 0) - crouch - (wideOK ? 0.06 : 0) * idle - (pose.cr || 0) - (receiving ? 0.07 : 0);
   const jt = p.jumpT ?? 9, jumpH = jt < 0.7 ? Math.sin(Math.PI * jt / 0.7) * (p.jumpAmp ?? 0.5) : 0; // エアKのジャンプ
   // 体勢を崩したとき：ボールの方へ上半身を大きく傾け、腰を落とす
   const lt = p.lungeT ?? 9, lean = lt < 0.8 ? Math.sin(Math.PI * Math.min(1, lt / 0.8)) * (p.lungeDir || 1) : 0;
@@ -1501,6 +1505,8 @@ function updateRig(R){
     const stance = state === 'serve' && p === servingPlayer() ? (i === 0 ? [0.1, 0.15] : [-0.1, -0.35]) : null;
     const foot = stance ? W(stance[0], stance[1], 0.05 + fu, true) : W(la * wide + Math.sign(la) * lstep, ff + lstep * 0.3, 0.05 + fu, true);
     const knee = stance ? W(stance[0] * 0.8 + la * 0.3, stance[1] * 0.5 + 0.12 + (pose.cr || 0) * 0.6, 0.42 + bob * 0.5, true) : W(la * (1.1 + (wideOK ? 2.4 : 0.45) * idle + (cp.sideStep ? 1.2 + 0.7 * Math.sin(ph) : 0)), ff * 0.5 + 0.1 + 0.06 * idle + (pose.cr || 0) * 0.6 - (i === 1 ? (pose.kr || 0) * 0.8 : (pose.kl || 0) * 0.8), 0.42 + fu * 0.5 + bob * 0.5, true);
+    if (airStraight) knee.copy(hip).lerp(foot, 0.5); // 空中ではひざを伸ばす
+    else if (landK) { knee.z += fz * landK * 0.9; knee.y -= landK * 0.2; } // 着地でひざを前に出して曲げる
     setLimb(R.th[i], hip, knee); setLimb(R.sh[i], knee, foot);
     R.knees[i].position.copy(knee);
     R.shoes[i].position.copy(foot).add(new V3(0, -0.01, 0)); R.shoes[i].position.addScaledVector(new V3(0, 0, fz), 0.04);
