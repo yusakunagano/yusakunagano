@@ -1348,10 +1348,15 @@ function buildRig(p){
   shoes.forEach(s => s.castShadow = true);
   // ラケット
   const racket = new THREE.Group();
-  const handle = limbMesh(0.016, M('#222'));
+  const handle = limbMesh(0.017, M('#e8e8e8', { roughness: 0.8 })); // グリップ（白いテープ）
   const frame = new THREE.Mesh(new THREE.TorusGeometry(0.125, 0.012, 6, 28), M(p.team === 0 ? '#d23a2a' : '#222', { roughness: 0.4 })); frame.scale.y = 1.3; frame.castShadow = true;
   const strings = new THREE.Mesh(new THREE.CircleGeometry(0.12, 24), new THREE.MeshStandardMaterial({ color: '#eeeeee', transparent: true, opacity: 0.35, side: THREE.DoubleSide })); strings.scale.y = 1.3;
   racket.add(frame, strings);
+  // スロート：柄の先が二股に広がってフレームにつながる形（真ん中に横のブリッジ）
+  { const fm = frame.material, seg = (a, b, rad) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, 1, 8), fm); const d = new V3().subVectors(b, a); m.position.copy(a).addScaledVector(d, 0.5); m.scale.y = d.length(); m.quaternion.setFromUnitVectors(new V3(0, 1, 0), d.normalize()); m.castShadow = true; racket.add(m); };
+    const top = new V3(0, -0.29, 0);
+    for (const sx of [-1, 1]) seg(top, new V3(sx * 0.075, -0.145, 0), 0.011);
+    seg(new V3(-0.05, -0.19, 0), new V3(0.05, -0.19, 0), 0.008); }
   g.add(...fists, torso, belly, chest, hips, neck, head, hair, ...ua, ...fa, ...hands, ...elbows, ...shoulders, ...th, ...sh, ...knees, ...shoes, handle, racket);
   return { p, g, fists, torso, belly, chest, hips, neck, head, hair, ua, fa, hands, elbows, shoulders, th, sh, knees, shoes, handle, racket };
 }
@@ -1486,12 +1491,13 @@ function updateRig(R){
   const base = W(...h), Hp = handsW[0];
   const off = (k) => new V3().subVectors(W(h[0] + rv[0] * k, h[1] + rv[1] * k, h[2] + rv[2] * k), base).add(Hp);
   const Np = off(0.42), Cp = off(0.75);
-  setLimb(R.handle, Hp, Np);
+
   const yAx = new V3().subVectors(Cp, Np).normalize();
   let hint = new V3(0, 0, fz); if (Math.abs(yAx.dot(hint)) > 0.9) hint = new V3(0, 1, 0);
   const xAx = new V3().crossVectors(yAx, hint).normalize(), zAx = new V3().crossVectors(xAx, yAx);
   R.racket.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xAx, yAx, zAx));
   R.racket.position.copy(Cp);
+  setLimb(R.handle, Hp, Cp.clone().addScaledVector(yAx, -0.29)); // 柄はスロートの付け根まで
   // 脚
   const sprintK = cp.sprint || 0, stride = cp.sideStep ? 0 : Math.sin(ph) * 0.28 * mv * (1 + 0.45 * sprintK), lift = 0.1 * mv * (1 + 0.8 * sprintK);
   [[-0.1, 1], [0.1, -1]].forEach(([la, k], i) => {
