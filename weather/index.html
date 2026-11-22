@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>あまぐもレーダー</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --bg: #f3f6f9; --panel: #ffffffee; --fg: #13202b; --muted: #5b6b78; --accent: #1f6fd1;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e151b; --panel: #18222bee; --fg: #e6eef4; --muted: #93a4b1; --accent: #5aa2ff; color-scheme: dark; }
+  }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--fg); font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  #map { position: absolute; inset: 0; }
+  .panel {
+    position: absolute; z-index: 1000; background: var(--panel); backdrop-filter: blur(6px);
+    border-radius: 12px; box-shadow: 0 4px 16px #0003; padding: 10px 14px;
+  }
+  #ctrl {
+    left: max(10px, env(safe-area-inset-left)); right: max(10px, env(safe-area-inset-right));
+    bottom: calc(14px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 6px;
+  }
+  .row { display: flex; align-items: center; gap: 10px; }
+  #time { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 6.5em; }
+  #tag { font-size: .75rem; padding: 2px 8px; border-radius: 99px; background: var(--muted); color: var(--bg); }
+  #tag.fc { background: #e08a00; color: #fff; }
+  #slider { flex: 1; accent-color: var(--accent); }
+  button {
+    border: 0; border-radius: 99px; background: var(--accent); color: #fff; font-size: 1rem;
+    width: 40px; height: 40px; cursor: pointer; flex: none;
+  }
+  button:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
+  #fc {
+    top: calc(10px + env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left));
+    max-width: min(360px, calc(100% - 20px)); box-sizing: border-box;
+  }
+  #fc h2 { margin: 0 0 6px; font-size: .9rem; color: var(--muted); font-weight: 600; }
+  #hours { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 4px; }
+  .h { text-align: center; flex: none; font-variant-numeric: tabular-nums; font-size: .8rem; }
+  .h b { display: block; font-size: 1.3rem; line-height: 1.4; }
+  .h .p { color: var(--accent); }
+  #legend { display: flex; gap: 2px; font-size: .65rem; color: var(--muted); align-items: center; }
+  #legend i { width: 18px; height: 8px; display: inline-block; }
+  .credit { font-size: .65rem; color: var(--muted); }
+  #locate { position: absolute; right: max(10px, env(safe-area-inset-right)); top: calc(10px + env(safe-area-inset-top)); z-index: 1000; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<button id="locate" title="現在地へ移動" aria-label="現在地へ移動">◎</button>
+
+<section id="fc" class="panel">
+  <h2 id="fcTitle">この場所の天気（読み込み中…）</h2>
+  <div id="hours"></div>
+</section>
+
+<section id="ctrl" class="panel">
+  <div class="row">
+    <button id="play" aria-label="再生">▶</button>
+    <span id="time">--:--</span>
+    <span id="tag">実況</span>
+  </div>
+  <input id="slider" type="range" min="0" max="0" value="0" aria-label="時刻">
+  <div class="row" style="justify-content:space-between;flex-wrap:wrap">
+    <div id="legend">弱
+      <i style="background:#f2f2ff"></i><i style="background:#a0d2ff"></i><i style="background:#218cff"></i>
+      <i style="background:#0041ff"></i><i style="background:#faf500"></i><i style="background:#ff9900"></i>
+      <i style="background:#ff2800"></i><i style="background:#b40068"></i>強
+    </div>
+    <span class="credit">雨雲: 気象庁 / 予報: Open-Meteo</span>
+  </div>
+</section>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const JMA = 'https://www.jma.go.jp/bosai/jmatile/data/nowc/';
+const map = L.map('map', { zoomControl: false }).setView([35.68, 139.76], 8);
+L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
+  maxZoom: 18, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">国土地理院</a>'
+}).addTo(map);
+
+let frames = [], layers = {}, idx = 0, timer = null;
+const slider = document.getElementById('slider');
+
+function fmt(t) { // "20261122123500" (UTC) -> "21:35"
+  const d = new Date(Date.UTC(+t.slice(0,4), +t.slice(4,6)-1, +t.slice(6,8), +t.slice(8,10), +t.slice(10,12)));
+  return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' });
+}
+
+function layerFor(f) {
+  const key = f.basetime + f.validtime;
+  if (!layers[key]) {
+    layers[key] = L.tileLayer(`${JMA}${f.basetime}/none/${f.validtime}/surf/hrpns/{z}/{x}/{y}.png`, {
+      opacity: 0, maxNativeZoom: 10, minNativeZoom: 4, maxZoom: 18,
+      attribution: '<a href="https://www.jma.go.jp/bosai/nowc/" target="_blank">気象庁</a>'
+    }).addTo(map);
+  }
+  return layers[key];
+}
+
+function show(i) {
+  idx = i; slider.value = i;
+  const f = frames[i];
+  frames.forEach((g, j) => { const l = layers[g.basetime + g.validtime]; if (l) l.setOpacity(j === i ? 0.75 : 0); });
+  layerFor(f).setOpacity(0.75);
+  // 次のフレームを先読み
+  if (frames[i + 1]) layerFor(frames[i + 1]);
+  document.getElementById('time').textContent = fmt(f.validtime);
+  const tag = document.getElementById('tag');
+  tag.textContent = f.fc ? '予測' : '実況';
+  tag.classList.toggle('fc', f.fc);
+}
+
+async function loadRadar() {
+  const [n1, n2] = await Promise.all(['N1', 'N2'].map(n =>
+    fetch(`${JMA}targetTimes_${n}.json`).then(r => r.json())));
+  const past = n1.filter(f => f.elements.includes('hrpns'))
+    .sort((a, b) => a.validtime.localeCompare(b.validtime)).slice(-12); // 直近1時間
+  const fut = n2.filter(f => f.elements.includes('hrpns'))
+    .sort((a, b) => a.validtime.localeCompare(b.validtime)).map(f => ({ ...f, fc: true }));
+  frames = [...past, ...fut];
+  slider.max = frames.length - 1;
+  show(past.length - 1); // 現在
+}
+
+function togglePlay() {
+  const btn = document.getElementById('play');
+  if (timer) { clearInterval(timer); timer = null; btn.textContent = '▶'; btn.ariaLabel = '再生'; return; }
+  btn.textContent = '❚❚'; btn.ariaLabel = '停止';
+  timer = setInterval(() => show((idx + 1) % frames.length), 600);
+}
+document.getElementById('play').onclick = togglePlay;
+slider.oninput = () => show(+slider.value);
+
+// ---- 地点の予報 (Open-Meteo) ----
+const WX = c => c === 0 ? '☀️' : c <= 2 ? '🌤' : c === 3 ? '☁️' : c <= 48 ? '🌫' :
+  c <= 67 || (c >= 80 && c <= 82) ? '🌧' : c <= 77 || c === 85 || c === 86 ? '🌨' : '⛈';
+
+async function loadForecast(lat, lon, name) {
+  document.getElementById('fcTitle').textContent = `${name}の天気`;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}` +
+    `&hourly=temperature_2m,precipitation_probability,weather_code&timezone=Asia%2FTokyo&forecast_hours=24`;
+  try {
+    const d = (await (await fetch(url)).json()).hourly;
+    document.getElementById('hours').innerHTML = d.time.map((t, i) => `
+      <div class="h">${+t.slice(11, 13)}時<b>${WX(d.weather_code[i])}</b>
+      ${Math.round(d.temperature_2m[i])}°<br><span class="p">${d.precipitation_probability[i] ?? '-'}%</span></div>`).join('');
+  } catch { document.getElementById('hours').textContent = '予報を取得できませんでした'; }
+}
+
+let marker;
+function setPoint(lat, lon, name) {
+  if (marker) marker.setLatLng([lat, lon]); else marker = L.marker([lat, lon]).addTo(map);
+  loadForecast(lat, lon, name);
+}
+map.on('click', e => setPoint(e.latlng.lat, e.latlng.lng, 'タップした地点'));
+
+function locate() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(p => {
+    map.setView([p.coords.latitude, p.coords.longitude], 10);
+    setPoint(p.coords.latitude, p.coords.longitude, '現在地');
+  }, () => {});
+}
+document.getElementById('locate').onclick = locate;
+
+setPoint(35.68, 139.76, '東京');
+locate();
+loadRadar().catch(() => { document.getElementById('time').textContent = '取得失敗'; });
+setInterval(() => { Object.values(layers).forEach(l => map.removeLayer(l)); layers = {}; loadRadar(); }, 5 * 60 * 1000);
+</script>
+</body>
+</html>
