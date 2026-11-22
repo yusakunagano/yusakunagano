@@ -46,6 +46,18 @@
   #legend { display: flex; gap: 2px; font-size: .65rem; color: var(--muted); align-items: center; }
   #legend i { width: 18px; height: 8px; display: inline-block; }
   .credit { font-size: .65rem; color: var(--muted); }
+  #q { flex: 1; min-width: 0; font-size: 16px; padding: 8px 10px; border-radius: 8px;
+       border: 1px solid var(--muted); background: var(--bg); color: var(--fg); }
+  #results { list-style: none; margin: 0 0 8px; padding: 0; max-height: 40vh; overflow-y: auto; }
+  #results li { padding: 8px 6px; border-bottom: 1px solid #8883; cursor: pointer; font-size: .9rem; }
+  #results li:hover { background: #8882; }
+  #pins { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 6px; }
+  #pins:empty { display: none; }
+  .chip { flex: none; display: flex; align-items: center; border-radius: 99px; background: #8882; font-size: .8rem; }
+  .chip span { padding: 5px 4px 5px 10px; cursor: pointer; }
+  .chip button, .ghost { background: none; color: var(--muted); width: 28px; height: 28px; font-size: .9rem; }
+  #pinBtn { color: #e0a800; font-size: 1.3rem; width: 32px; height: 32px; }
+  #fc h2 { margin-bottom: 0; }
   #locate { position: absolute; right: max(10px, env(safe-area-inset-right)); top: calc(10px + env(safe-area-inset-top)); z-index: 1000; }
 </style>
 </head>
@@ -55,7 +67,16 @@
 <button id="locate" title="現在地へ移動" aria-label="現在地へ移動">◎</button>
 
 <section id="fc" class="panel">
-  <h2 id="fcTitle">この場所の天気（読み込み中…）</h2>
+  <form id="search" class="row" style="gap:6px;margin-bottom:8px">
+    <input id="q" type="search" placeholder="住所・地名で検索" aria-label="住所検索" autocomplete="off">
+    <button type="submit" aria-label="検索" style="width:36px;height:36px">🔍</button>
+  </form>
+  <ul id="results" hidden></ul>
+  <div id="pins"></div>
+  <div class="row" style="justify-content:space-between">
+    <h2 id="fcTitle">この場所の天気（読み込み中…）</h2>
+    <button id="pinBtn" class="ghost" aria-label="この地点をピン留め" title="ピン留め">☆</button>
+  </div>
   <div id="hours"></div>
 </section>
 
@@ -153,11 +174,72 @@ async function loadForecast(lat, lon, name) {
   } catch { document.getElementById('hours').textContent = '予報を取得できませんでした'; }
 }
 
-let marker;
+let marker, current = null;
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 function setPoint(lat, lon, name) {
+  current = { lat, lon, name };
   if (marker) marker.setLatLng([lat, lon]); else marker = L.marker([lat, lon]).addTo(map);
   loadForecast(lat, lon, name);
+  updatePinBtn();
 }
+
+// ---- ピン留め（この端末のブラウザに保存）----
+let pins = [];
+try { pins = JSON.parse(localStorage.getItem('pins') || '[]'); } catch {}
+const savePins = () => { try { localStorage.setItem('pins', JSON.stringify(pins)); } catch {} };
+const pinIndex = () => current ? pins.findIndex(p => Math.abs(p.lat - current.lat) < 1e-4 && Math.abs(p.lon - current.lon) < 1e-4) : -1;
+
+function updatePinBtn() {
+  const on = pinIndex() >= 0, b = document.getElementById('pinBtn');
+  b.textContent = on ? '★' : '☆';
+  b.ariaLabel = b.title = on ? 'ピン留めを外す' : 'この地点をピン留め';
+}
+function renderPins() {
+  document.getElementById('pins').innerHTML = pins.map((p, i) =>
+    `<div class="chip"><span data-i="${i}">📍${esc(p.name)}</span><button data-del="${i}" aria-label="${esc(p.name)}を削除">×</button></div>`).join('');
+}
+document.getElementById('pins').onclick = e => {
+  const t = e.target;
+  if (t.dataset.i !== undefined) { const p = pins[+t.dataset.i]; map.setView([p.lat, p.lon], 11); setPoint(p.lat, p.lon, p.name); }
+  if (t.dataset.del !== undefined) { pins.splice(+t.dataset.del, 1); savePins(); renderPins(); updatePinBtn(); }
+};
+document.getElementById('pinBtn').onclick = () => {
+  if (!current) return;
+  const i = pinIndex();
+  if (i >= 0) pins.splice(i, 1);
+  else {
+    let name = current.name;
+    if (name === 'タップした地点' || name === '現在地') name = `${name}（${current.lat.toFixed(2)}, ${current.lon.toFixed(2)}）`;
+    pins.push({ ...current, name });
+  }
+  savePins(); renderPins(); updatePinBtn();
+};
+renderPins();
+
+// ---- 住所検索（国土地理院）----
+const results = document.getElementById('results');
+document.getElementById('search').onsubmit = async e => {
+  e.preventDefault();
+  const q = document.getElementById('q').value.trim();
+  if (!q) return;
+  results.hidden = false;
+  results.innerHTML = '<li>検索中…</li>';
+  try {
+    const r = await (await fetch('https://msearch.gsi.go.jp/address-search/AddressSearch?q=' + encodeURIComponent(q))).json();
+    if (!r.length) { results.innerHTML = '<li>見つかりませんでした。別の書き方で試してください。</li>'; return; }
+    results.innerHTML = r.slice(0, 20).map(f =>
+      `<li data-lat="${f.geometry.coordinates[1]}" data-lon="${f.geometry.coordinates[0]}">${esc(f.properties.title)}</li>`).join('');
+  } catch { results.innerHTML = '<li>検索できませんでした。通信状況を確認してください。</li>'; }
+};
+results.onclick = e => {
+  const li = e.target.closest('li[data-lat]');
+  if (!li) return;
+  const lat = +li.dataset.lat, lon = +li.dataset.lon;
+  map.setView([lat, lon], 12);
+  setPoint(lat, lon, li.textContent);
+  results.hidden = true;
+};
 map.on('click', e => setPoint(e.latlng.lat, e.latlng.lng, 'タップした地点'));
 
 function locate() {
