@@ -111,13 +111,17 @@ const slider = document.getElementById('slider');
 
 function fmt(t) { // "20261122123500" (UTC) -> "21:35"
   const d = new Date(Date.UTC(+t.slice(0,4), +t.slice(4,6)-1, +t.slice(6,8), +t.slice(8,10), +t.slice(10,12)));
-  return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' });
+  const opt = { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' };
+  const day = k => k.toLocaleDateString('ja-JP', { day: 'numeric', timeZone: 'Asia/Tokyo' });
+  return (day(d) !== day(new Date()) ? '翌' : '') + d.toLocaleTimeString('ja-JP', opt);
 }
 
 function layerFor(f) {
   const key = f.basetime + f.validtime;
   if (!layers[key]) {
-    layers[key] = L.tileLayer(`${JMA}${f.basetime}/none/${f.validtime}/surf/hrpns/{z}/{x}/{y}.png`, {
+    layers[key] = L.tileLayer(f.rasrf
+      ? `https://www.jma.go.jp/bosai/jmatile/data/rasrf/${f.basetime}/none/${f.validtime}/surf/rasrf/{z}/{x}/{y}.png`
+      : `${JMA}${f.basetime}/none/${f.validtime}/surf/hrpns/{z}/{x}/{y}.png`, {
       opacity: 0, maxNativeZoom: 10, minNativeZoom: 4, maxZoom: 18,
       attribution: '<a href="https://www.jma.go.jp/bosai/nowc/" target="_blank">気象庁</a>'
     }).addTo(map);
@@ -134,18 +138,27 @@ function show(i) {
   if (frames[i + 1]) layerFor(frames[i + 1]);
   document.getElementById('time').textContent = fmt(f.validtime);
   const tag = document.getElementById('tag');
-  tag.textContent = f.fc ? '予測' : '実況';
+  tag.textContent = f.rasrf ? '予測（1時間ごと）' : f.fc ? '予測' : '実況';
   tag.classList.toggle('fc', f.fc);
 }
 
 async function loadRadar() {
   const [n1, n2] = await Promise.all(['N1', 'N2'].map(n =>
     fetch(`${JMA}targetTimes_${n}.json`).then(r => r.json())));
-  const past = n1.filter(f => f.elements.includes('hrpns'))
-    .sort((a, b) => a.validtime.localeCompare(b.validtime)).slice(-12); // 直近1時間
-  const fut = n2.filter(f => f.elements.includes('hrpns'))
-    .sort((a, b) => a.validtime.localeCompare(b.validtime)).map(f => ({ ...f, fc: true }));
-  frames = [...past, ...fut];
+  const byTime = (a, b) => a.validtime.localeCompare(b.validtime);
+  const past = n1.filter(f => f.elements.includes('hrpns')).sort(byTime).slice(-36); // 過去3時間（5分ごと）
+  const fut = n2.filter(f => f.elements.includes('hrpns')).sort(byTime).map(f => ({ ...f, fc: true }));
+  // 降水短時間予報（1時間ごと・約15時間先まで）。最新の発表分だけ使い、ナウキャストより先の時刻をつなげる
+  let longFc = [];
+  try {
+    const rs = (await (await fetch('https://www.jma.go.jp/bosai/jmatile/data/rasrf/targetTimes.json')).json())
+      .filter(f => f.elements.includes('rasrf'));
+    const latest = rs.reduce((m, f) => f.basetime > m ? f.basetime : m, '');
+    const last = (fut.at(-1) || past.at(-1)).validtime;
+    longFc = rs.filter(f => f.basetime === latest && f.validtime > last).sort(byTime)
+      .map(f => ({ ...f, fc: true, rasrf: true }));
+  } catch {}
+  frames = [...past, ...fut, ...longFc];
   slider.max = frames.length - 1;
   show(past.length - 1); // 現在
 }
