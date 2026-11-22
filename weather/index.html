@@ -51,11 +51,12 @@
   #results { list-style: none; margin: 0 0 8px; padding: 0; max-height: 40vh; overflow-y: auto; }
   #results li { padding: 8px 6px; border-bottom: 1px solid #8883; cursor: pointer; font-size: .9rem; }
   #results li:hover { background: #8882; }
-  #pins { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 6px; }
+  #pins { list-style: none; margin: 0 0 8px; padding: 0; max-height: 30vh; overflow-y: auto; border-bottom: 1px solid #8883; }
   #pins:empty { display: none; }
-  .chip { flex: none; display: flex; align-items: center; border-radius: 99px; background: #8882; font-size: .8rem; }
-  .chip span { padding: 5px 4px 5px 10px; cursor: pointer; }
-  .chip button, .ghost { background: none; color: var(--muted); width: 28px; height: 28px; font-size: .9rem; }
+  #pins li { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: .85rem; font-variant-numeric: tabular-nums; }
+  #pins .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  #pins .wx { flex: none; } #pins .rp { flex: none; width: 3em; text-align: right; color: var(--accent); }
+  #pins button, .ghost { background: none; color: var(--muted); width: 28px; height: 28px; font-size: .9rem; }
   #pinBtn { color: #e0a800; font-size: 1.3rem; width: 32px; height: 32px; }
   #fc h2 { margin-bottom: 0; }
   #locate { position: absolute; right: max(10px, env(safe-area-inset-right)); top: calc(10px + env(safe-area-inset-top)); z-index: 1000; }
@@ -72,7 +73,7 @@
     <button type="submit" aria-label="検索" style="width:36px;height:36px">🔍</button>
   </form>
   <ul id="results" hidden></ul>
-  <div id="pins"></div>
+  <ul id="pins" aria-label="ピン留めした地点"></ul>
   <div class="row" style="justify-content:space-between">
     <h2 id="fcTitle">この場所の天気（読み込み中…）</h2>
     <button id="pinBtn" class="ghost" aria-label="この地点をピン留め" title="ピン留め">☆</button>
@@ -195,14 +196,35 @@ function updatePinBtn() {
   b.textContent = on ? '★' : '☆';
   b.ariaLabel = b.title = on ? 'ピン留めを外す' : 'この地点をピン留め';
 }
+let pinWx = [];
 function renderPins() {
-  document.getElementById('pins').innerHTML = pins.map((p, i) =>
-    `<div class="chip"><span data-i="${i}">📍${esc(p.name)}</span><button data-del="${i}" aria-label="${esc(p.name)}を削除">×</button></div>`).join('');
+  document.getElementById('pins').innerHTML = pins.map((p, i) => {
+    const w = pinWx[i];
+    return `<li><span class="nm" data-i="${i}" title="${esc(p.name)}">📍${esc(p.name)}</span>
+      <span class="wx">${w ? `${WX(w.code)} ${Math.round(w.temp)}°` : '…'}</span>
+      <span class="rp">${w && w.rain != null ? w.rain + '%' : ''}</span>
+      <button data-del="${i}" aria-label="${esc(p.name)}を削除">×</button></li>`;
+  }).join('');
+}
+// ピン留め地点の天気をまとめて取得
+async function loadPinWeather() {
+  pinWx = [];
+  renderPins();
+  if (!pins.length) return;
+  const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + pins.map(p => p.lat.toFixed(3)).join(',') +
+    '&longitude=' + pins.map(p => p.lon.toFixed(3)).join(',') +
+    '&current=temperature_2m,weather_code&hourly=precipitation_probability&forecast_hours=1&timezone=Asia%2FTokyo';
+  try {
+    let d = await (await fetch(url)).json();
+    if (!Array.isArray(d)) d = [d];
+    pinWx = d.map(x => ({ temp: x.current.temperature_2m, code: x.current.weather_code, rain: x.hourly.precipitation_probability[0] }));
+  } catch {}
+  renderPins();
 }
 document.getElementById('pins').onclick = e => {
   const t = e.target;
-  if (t.dataset.i !== undefined) { const p = pins[+t.dataset.i]; map.setView([p.lat, p.lon], 11); setPoint(p.lat, p.lon, p.name); }
-  if (t.dataset.del !== undefined) { pins.splice(+t.dataset.del, 1); savePins(); renderPins(); updatePinBtn(); }
+  if (t.dataset.i !== undefined && pins[+t.dataset.i]) { const p = pins[+t.dataset.i]; map.setView([p.lat, p.lon], 11); setPoint(p.lat, p.lon, p.name); }
+  if (t.dataset.del !== undefined) { pins.splice(+t.dataset.del, 1); pinWx.splice(+t.dataset.del, 1); savePins(); renderPins(); updatePinBtn(); }
 };
 document.getElementById('pinBtn').onclick = () => {
   if (!current) return;
@@ -213,9 +235,10 @@ document.getElementById('pinBtn').onclick = () => {
     if (name === 'タップした地点' || name === '現在地') name = `${name}（${current.lat.toFixed(2)}, ${current.lon.toFixed(2)}）`;
     pins.push({ ...current, name });
   }
-  savePins(); renderPins(); updatePinBtn();
+  savePins(); loadPinWeather(); updatePinBtn();
 };
-renderPins();
+loadPinWeather();
+setInterval(loadPinWeather, 10 * 60 * 1000);
 
 // ---- 住所検索（国土地理院）----
 const results = document.getElementById('results');
