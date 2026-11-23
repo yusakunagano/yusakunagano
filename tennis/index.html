@@ -918,6 +918,8 @@ function hit(p, reach = 1.5){
       rush = Math.max(rush, pressure);
     }
   }
+  // 近くからのアプローチ（ネットへ詰めてくる強い球）を受けた時：相手が近くて焦り、ミスが出やすい
+  if (!close && !isSmash && ball.approach && Math.random() < 0.42 * (1.36 - 0.12 * stK(p, 'con'))) { const q = Math.random(); close = q < 0.45 ? 'ctrl' : q < 0.75 ? 'net' : 'float'; rush = Math.max(rush, 0.6); }
   if (close === 'ctrl') { tx += (Math.random() - .5) * 6 * rush; ty += -s * (Math.random() - .4) * 5 * rush; }
   if ((jam > 0 && Math.random() < (0.25 + jam * 0.6) * (1.36 - 0.12 * stK(p, 'con')) * (slice ? 0.5 : 1)) || close === 'net' || close === 'wild' || (vsSmash && Math.random() < 0.4)) {
     if (close) jam = Math.max(jam, 0.7);
@@ -953,12 +955,20 @@ function hit(p, reach = 1.5){
     ty = -s * (5 + Math.random() * 5.5);
     dist = Math.hypot(tx - ball.x, ty - ball.y);
     p.lungeT = 0; p.lungeDir = Math.sign((ball.x - p.x) * s) || 1; // 体を傾ける向き（その人の右=+1）
+    if (isVolley) { // ボレーで手を伸ばして何とか当てる：ポヨーンと短く浮く
+      p.shot = side === 'f' ? 'fvs' : 'bvs';
+      tx = Math.max(-W2 + 0.8, Math.min(W2 - 0.8, ball.x * 0.6 + (Math.random() - .5) * 3));
+      ty = -s * (2.5 + Math.random() * 4);
+      dist = Math.hypot(tx - ball.x, ty - ball.y);
+      p.stretchV = true;
+    }
   }
-  const approachShot = isAirK && (p.fwdRun || 0) > 3;
+  const approachShot = isAirK && (p.fwdRun || 0) > 3; p.fwdRun0 = p.fwdRun || 0;
   if (isAirK && !lob && !drop && !mishit) { spd *= approachShot ? 1.5 : 1.3; ty = -s * (HL - 1.2 - Math.random() * 2); } // 長く走ってきたエアKはさらに強いアプローチショット
   t = dist / spd;
   if (lob) t = Math.max(t, close === 'float' ? 1.4 : lunge ? 1.3 : p.isHuman ? 1.7 : 1.9);
   if (lunge) t = Math.max(t, dist / (8 + Math.random() * 3));
+  if (lunge && p.stretchV) { t = Math.max(t, 1.25 + Math.random() * 0.35); p.stretchV = false; }
   const z = Math.max(ball.z, 0.4);
   const v = launch(ball.x, ball.y, z, tx, ty, t);
   Object.assign(ball, v); ball.z = z;
@@ -966,8 +976,9 @@ function hit(p, reach = 1.5){
   ball.smash = isSmash && !mishit; ball.curve = 0;
   if (slice && !isSmash && !lob && !mishit) ball.curve = (side === 'f' ? -1 : 1) * s * 1.4; // スライスは少し曲がる（フォアは打った人の左へ、バックは右へ）
   p.fwdRun = 0;
+  ball.approach = !lob && !drop && !mishit && !isSmash && (approachShot || (p.fwdRun0 || 0) > 2.5 || (!isVolley && Math.abs(p.y) < 8.5 && spd > 18)); // 前へ詰めながら打った球
   ball.volley = isVolley; ball.spin = slice && !isSmash ? 'slice' : null;
-  p.tag = approachShot && !mishit ? 'アプローチ！' : lunge ? 'ギリギリ…' : slice && !isSmash ? (p.shot === 'fsl' || p.shot === 'bsl' ? '' : 'スライス') : close === 'ctrl' ? 'ブレた！' : drop && !isSmash ? 'ドロップ' : close === 'float' ? 'ふわっ…' : close === 'good' ? 'ナイス反応！' : mishit ? '詰まった！' : weak ? '正面…' : power ? '強打！' : '';
+  p.tag = approachShot && !mishit ? 'アプローチ！' : lunge ? (p.shot === 'fvs' || p.shot === 'bvs' ? 'なんとか…！' : 'ギリギリ…') : slice && !isSmash ? (p.shot === 'fsl' || p.shot === 'bsl' ? '' : 'スライス') : close === 'ctrl' ? 'ブレた！' : drop && !isSmash ? 'ドロップ' : close === 'float' ? 'ふわっ…' : close === 'good' ? 'ナイス反応！' : mishit ? '詰まった！' : weak ? '正面…' : power ? '強打！' : '';
   lastHitter = p; bounces = 0; isServe = false; rallyHits++;
   hitFrom = { x: ball.x, y: ball.y };
   p.prepType = p.prepType && p.prepType === p.shot ? p.prepType : p.shot;
@@ -1860,16 +1871,27 @@ const POSES = {
         mid:   { tw: 0.6, h: [0.25, 0.45, 1.75], r: [0.4, 0.1, 0.4], l: 'grip', sr: 0.2, kl: 0.4 },
         fol:   { tw: 1.0, h: [0.32, 0.0, 1.7], r: [0.2, -0.45, -0.25], l: 'grip', sr: 0.1, sl: -0.1, kl: 0.25 } },
   // スライス：ラケットを高い位置に引き、面を少し上に向けたまま、上から下へ切るように振り下ろす
-  fsl: { back1: { tw: 1.2, h: [0.55, -0.4, 1.5], r: [0.15, -0.3, 0.55], l: [0.1, 0.55, 1.3], cr: 0.1, sl: 0.25 },
-        back2: { tw: 1.25, h: [0.6, -0.5, 1.45], r: [0.15, -0.35, 0.5], l: [0.12, 0.55, 1.28], cr: 0.12, sl: 0.28 },
-        hit:   { tw: 0.2, h: [0.45, 0.35, 1.0], r: [0.6, 0.25, 0.15], l: [-0.3, 0.3, 1.1], cr: 0.14, sl: 0.3 },
-        mid:   { tw: -0.2, h: [0.25, 0.6, 0.8], r: [0.4, 0.55, 0.05], l: [-0.4, 0.1, 1.1], cr: 0.14, sl: 0.3 },
-        fol:   { tw: -0.4, h: [0.05, 0.65, 0.75], r: [0.2, 0.6, 0.0], l: [-0.45, 0.0, 1.1], cr: 0.12, sl: 0.3, sr: 0.1 } },
-  bsl: { back1: { tw: -1.3, h: [-0.45, -0.25, 1.55], r: [-0.1, -0.3, 0.55], l: 'grip', cr: 0.1, sr: 0.3 },
-        back2: { tw: -1.35, h: [-0.5, -0.35, 1.5], r: [-0.1, -0.35, 0.5], l: [-0.35, -0.1, 1.4], cr: 0.12, sr: 0.35 },
-        hit:   { tw: -0.4, h: [-0.15, 0.4, 1.0], r: [-0.6, 0.25, 0.15], l: [-0.5, -0.4, 1.15], cr: 0.14, sr: 0.35 },
-        mid:   { tw: -0.15, h: [0.15, 0.6, 0.85], r: [-0.3, 0.55, 0.05], l: [-0.55, -0.45, 1.15], cr: 0.14, sr: 0.38 },
-        fol:   { tw: 0, h: [0.3, 0.65, 0.8], r: [-0.1, 0.6, 0.0], l: [-0.6, -0.45, 1.15], cr: 0.12, sr: 0.38 } },
+  fsl: { back1: { tw: 0.95, h: [0.6, -0.25, 1.45], r: [0.1, -0.15, 0.6], l: [0.0, 0.5, 1.25], cr: 0.1, sl: 0.2 },
+        back2: { tw: 1.0, h: [0.65, -0.3, 1.5], r: [0.15, -0.2, 0.6], l: [0.05, 0.5, 1.25], cr: 0.12, sl: 0.3 },
+        hit:   { tw: 0.15, h: [0.5, 0.45, 1.05], r: [0.45, 0.35, 0.3], l: [-0.3, 0.25, 1.05], cr: 0.15, sl: 0.4 },
+        mid:   { tw: -0.05, h: [0.3, 0.68, 0.88], r: [0.3, 0.5, 0.15], l: [-0.38, 0.1, 1.05], cr: 0.14, sl: 0.42 },
+        fol:   { tw: -0.2, h: [0.1, 0.7, 0.85], r: [0.15, 0.55, 0.15], l: [-0.42, 0.0, 1.05], cr: 0.12, sl: 0.42 } },
+  bsl: { back1: { tw: -1.05, h: [-0.5, -0.2, 1.45], r: [-0.1, -0.15, 0.6], l: [-0.32, -0.08, 1.38], cr: 0.1, sr: 0.2 }, // 片手：左手はラケットの首に添えて引く
+        back2: { tw: -1.1, h: [-0.55, -0.25, 1.5], r: [-0.15, -0.2, 0.6], l: [-0.38, -0.12, 1.42], cr: 0.12, sr: 0.3 },
+        hit:   { tw: -0.35, h: [-0.3, 0.45, 1.05], r: [-0.45, 0.35, 0.3], l: [-0.55, -0.35, 1.15], cr: 0.15, sr: 0.4 }, // 左手は後ろへ開いてバランス
+        mid:   { tw: -0.25, h: [-0.05, 0.68, 0.9], r: [-0.3, 0.5, 0.15], l: [-0.6, -0.45, 1.15], cr: 0.14, sr: 0.42 },
+        fol:   { tw: -0.2, h: [0.12, 0.68, 0.88], r: [-0.15, 0.55, 0.15], l: [-0.62, -0.48, 1.15], cr: 0.12, sr: 0.42 } },
+  // ギリギリのボレー：横へ大きく踏み出し、腕を伸ばしきって何とか当てる
+  fvs: { back1: { tw: 0.6, h: [0.9, 0.0, 1.0], r: [0.3, 0.3, 0.3], l: [-0.35, 0.2, 1.1], bend: 0.21, cr: 0.14, sl: 0.1, sr: 0.5 },
+        back2: { tw: 0.6, h: [0.95, 0.0, 0.95], r: [0.35, 0.3, 0.25], l: [-0.4, 0.15, 1.1], bend: 0.02, cr: 0.01, sr: 0.55 },
+        hit:   { tw: 0.35, h: [1.05, 0.35, 0.8], r: [0.55, 0.3, 0.1], l: [-0.55, -0.1, 1.2], bend: 0.03, cr: 0.17, sr: 0.6 },
+        mid:   { tw: 0.3, h: [1.0, 0.4, 0.8], r: [0.5, 0.35, 0.1], l: [-0.55, -0.15, 1.2], bend: 0.03, cr: 0.17, sr: 0.6 },
+        fol:   { tw: 0.2, h: [0.9, 0.45, 0.85], r: [0.4, 0.4, 0.15], l: [-0.5, -0.1, 1.15], bend: 0.02, cr: 0.01, sr: 0.55 } },
+  bvs: { back1: { tw: -0.7, h: [-0.9, 0.0, 1.0], r: [-0.3, 0.3, 0.3], l: [0.3, 0.1, 1.1], bend: 0.21, cr: 0.14, sr: 0.1, sl: 0.5 },
+        back2: { tw: -0.7, h: [-0.95, 0.0, 0.95], r: [-0.35, 0.3, 0.25], l: [0.35, 0.05, 1.1], bend: 0.02, cr: 0.01, sl: 0.55 },
+        hit:   { tw: -0.45, h: [-1.05, 0.35, 0.8], r: [-0.55, 0.3, 0.1], l: [0.5, -0.15, 1.2], bend: 0.03, cr: 0.17, sl: 0.6 },
+        mid:   { tw: -0.4, h: [-1.0, 0.4, 0.8], r: [-0.5, 0.35, 0.1], l: [0.5, -0.2, 1.2], bend: 0.03, cr: 0.17, sl: 0.6 },
+        fol:   { tw: -0.3, h: [-0.9, 0.45, 0.85], r: [-0.4, 0.4, 0.15], l: [0.45, -0.15, 1.15], bend: 0.02, cr: 0.01, sl: 0.55 } },
   // 片手バックハンド（メデラーなど）：左肩の上に高く引き、右足の前で打って、両腕を大きく開く
   bs1: { back1: { tw: -1.3, h: [-0.35, -0.15, 1.45], r: [-0.05, -0.15, 0.65], l: 'grip', cr: 0.08, sr: 0.3 },
         back2: { tw: -1.35, h: [-0.5, -0.4, 0.9], r: [-0.15, -0.45, -0.4], l: [-0.35, -0.25, 0.95], cr: 0.12, sr: 0.35 },
@@ -1888,7 +1910,7 @@ const POSES = {
         mid:   { tw: -0.4, h: [0.0, 0.6, 1.3], r: [-0.1, 0.5, -0.3], l: [-0.35, 0.1, 1.0], cr: 0.05, sl: 0.3, sr: -0.35, kr: 0.32, bend: 0.25 },
         fol:   { tw: -0.7, h: [-0.35, 0.25, 0.75], r: [-0.3, 0.0, -0.55], l: [-0.4, -0.2, 1.0], cr: 0.1, sl: 0.4, sr: -0.4, kr: 0.2, bend: 0.3 } },
 };
-const SHOT_NAME = { fsl: 'フォアスライス', bsl: 'バックスライス', bs1: 'バックストローク（片手）', bvc: 'バックボレー（正面）', jk: 'エアK！', bjk: 'ジャンプバック！', fs: 'フォアストローク', bs: 'バックストローク', fv: 'フォアボレー', bv: 'バックボレー', sm: 'スマッシュ' };
+const SHOT_NAME = { fvs: 'フォアボレー', bvs: 'バックボレー', fsl: 'フォアスライス', bsl: 'バックスライス', bs1: 'バックストローク（片手）', bvc: 'バックボレー（正面）', jk: 'エアK！', bjk: 'ジャンプバック！', fs: 'フォアストローク', bs: 'バックストローク', fv: 'フォアボレー', bv: 'バックボレー', sm: 'スマッシュ' };
 function lerp3(a, b, t){ return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
 function lerpPose(A, B, t){
   t = Math.max(0, Math.min(1, t)); t = t * t * (3 - 2 * t);
@@ -1910,11 +1932,11 @@ resize();
 const vw = { az: 0.6, el: 0.25, dist: 5.5, act: 'ready', t: 0, speed: 1, loop: true, ph: 0, drag: null };
 const VW_ACTS = [
   ['ready', '構え（後ろ）'], ['net', '構え（ネット前）'], ['runR', '右へ走る'], ['runL', '左へ走る'], ['runF', '前へ走る'],
-  ['side', 'サイドステップ'], ['fs', 'フォアストローク'], ['bs', 'バックストローク'], ['fsl', 'フォアスライス'], ['bsl', 'バックスライス'], ['fv', 'フォアボレー'], ['bv', 'バックボレー'], ['bvc', 'バックボレー（正面）'],
+  ['side', 'サイドステップ'], ['fs', 'フォアストローク'], ['bs', 'バックストローク'], ['fsl', 'フォアスライス'], ['bsl', 'バックスライス'], ['fv', 'フォアボレー'], ['bv', 'バックボレー'], ['bvc', 'バックボレー（正面）'], ['fvs', 'ギリギリのボレー'],
   ['sm', 'スマッシュ'], ['jk', 'エアK'], ['bjk', 'ジャンプバック'], ['serveF', 'フラットサーブ'], ['serveS', 'スライスサーブ'], ['serveK', 'キックサーブ'],
   ['reach', 'ギリギリで返す'], ['whiff', '届かない（空振り）'], ['fall', '転ぶ'],
 ];
-const VW_LEN = { ready: 2, net: 2, runR: 2, runL: 2, runF: 2, side: 2, fs: 1.8, bs: 1.8, fv: 1.6, bv: 1.6, bvc: 1.6, fsl: 1.8, bsl: 1.8, sm: 1.8, jk: 1.9, bjk: 1.9, serveF: 5.2, serveS: 5.2, serveK: 5.2, reach: 1.6, whiff: 1.6, fall: 2.2 };
+const VW_LEN = { fvs: 1.8, ready: 2, net: 2, runR: 2, runL: 2, runF: 2, side: 2, fs: 1.8, bs: 1.8, fv: 1.6, bv: 1.6, bvc: 1.6, fsl: 1.8, bsl: 1.8, sm: 1.8, jk: 1.9, bjk: 1.9, serveF: 5.2, serveS: 5.2, serveK: 5.2, reach: 1.6, whiff: 1.6, fall: 2.2 };
 function viewerSetup(){
   document.getElementById('menu').classList.add('hidden');
   hud.classList.add('hidden');
@@ -1985,6 +2007,7 @@ function viewerUpdate(dt){
       if (t >= 0.5 && vwOnce('jump')) { p.jumpT = 0; p.jumpAmp = 0.6; }
       if (t >= 0.9 && vwOnce('hit')) { p.shot = a; p.fromPose = prepPose(p); p.prep = 0; p.st = 0; p.label = 1.1; p.tag = ''; }
       break;
+    case 'fvs': if (t < 0.5) { p.prepType = 'fv'; p.prep = Math.min(1, t / 0.4); } else if (vwOnce('hit')) { p.shot = 'fvs'; p.fromPose = prepPose(p); p.prep = 0; p.st = 0; p.lungeT = 0; p.lungeDir = 1; p.label = 1.1; p.tag = 'なんとか…！'; } break;
     case 'reach': if (t >= 0.3 && vwOnce('hit')) { p.shot = 'fs'; p.fromPose = POSES.fs.back2; p.st = 0; p.lungeT = 0; p.lungeDir = 1; p.label = 1.1; p.tag = 'ギリギリ…'; } break;
     case 'whiff': if (t >= 0.3 && vwOnce('hit')) { p.shot = 'fs'; p.fromPose = POSES.fs.back2; p.st = 0; p.lungeT = 0; p.lungeDir = 1; p.label = 1.1; p.tag = '届かない…'; } break;
     case 'fall': if (t >= 0.2 && vwOnce('hit')) { p.shot = 'fs'; p.fromPose = POSES.fs.back2; p.st = 0; p.lungeT = 0; p.lungeDir = 1; p.fallT = 0; p.label = 1.1; p.tag = 'コケた！'; } break;
@@ -2026,7 +2049,7 @@ function viewerCamera(){
 // どの画面でも：保存した手直し（localStorage）をポーズに反映する。ゲームにもそのまま効く
 const POSE_PHASES = ['back1', 'back2', 'hit', 'mid', 'fol'];
 const PHASE_NAME = { back1: '①テイクバック（高く引く）', back2: '②テイクバック（落とす）', hit: '③打点', mid: '④振り抜き途中', fol: '⑤フィニッシュ' };
-const POSE_GROUP = { fs: 'フォアストローク', fsl: 'フォアスライス', bsl: 'バックスライス', bs: 'バックストローク', bs1: 'バックストローク（片手）', fv: 'フォアボレー', bv: 'バックボレー', bvc: 'バックボレー（正面）', sm: 'サーブ・スマッシュ（打つ）', jk: 'エアK', bjk: 'ジャンプバック' };
+const POSE_GROUP = { fvs: 'ギリギリのフォアボレー', bvs: 'ギリギリのバックボレー', fs: 'フォアストローク', fsl: 'フォアスライス', bsl: 'バックスライス', bs: 'バックストローク', bs1: 'バックストローク（片手）', fv: 'フォアボレー', bv: 'バックボレー', bvc: 'バックボレー（正面）', sm: 'サーブ・スマッシュ（打つ）', jk: 'エアK', bjk: 'ジャンプバック' };
 const POSE_REG = {};
 POSE_REG['READY'] = { name: '構え（後ろ）', pose: READY };
 POSE_REG['READY_NET'] = { name: '構え（ネット前）', pose: READY_NET };
@@ -2036,7 +2059,7 @@ POSE_REG['SERVE_DROP'] = { name: 'サーブ：ラケットを背中に落とす'
 for (const k of Object.keys(POSE_GROUP)) for (const ph of POSE_PHASES) if (POSES[k] && POSES[k][ph]) POSE_REG[k + '.' + ph] = { name: POSE_GROUP[k] + ' ' + PHASE_NAME[ph], pose: POSES[k][ph] };
 // 体全体の向き（yw）の初期値：フォアは少し右向き、バックは少し左向き（打ち終わりに近いほど正面へ戻る）
 { const YW = { back1: 0.3, back2: 0.35, hit: 0.2, mid: 0.1, fol: 0.05 };
-  for (const [k, sg] of [['fs', 1], ['fsl', 1], ['bsl', -1], ['fv', 1], ['jk', 1], ['bs', -1], ['bs1', -1], ['bv', -1], ['bjk', -1]])
+  for (const [k, sg] of [['fs', 1], ['fsl', 1], ['bsl', -1], ['fvs', 1], ['bvs', -1], ['fv', 1], ['jk', 1], ['bs', -1], ['bs1', -1], ['bv', -1], ['bjk', -1]])
     for (const ph of POSE_PHASES) if (POSES[k] && POSES[k][ph] && POSES[k][ph].yw === undefined) POSES[k][ph].yw = sg * YW[ph]; }
 const POSE_KEYS_ALL = ['h', 'r', 'l', 'yw', 'tw', 'bend', 'cr', 'sl', 'sr', 'kl', 'kr', 'eu'];
 const clonePose = (o) => JSON.parse(JSON.stringify(o));
