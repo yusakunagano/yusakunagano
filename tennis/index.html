@@ -10,7 +10,7 @@
   #wrap{position:relative;width:100%;height:100%;display:flex;justify-content:center;align-items:center}
   canvas{display:block;position:absolute;inset:0}
   #hud{position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.55);padding:6px 14px;border-radius:8px;font-size:15px;white-space:nowrap;text-align:center}
-  #msg{position:absolute;top:45%;left:50%;transform:translate(-50%,-50%);font-size:26px;font-weight:bold;text-shadow:0 2px 6px #000;pointer-events:none;text-align:center}
+  #msg{white-space:pre-line;position:absolute;top:45%;left:50%;transform:translate(-50%,-50%);font-size:26px;font-weight:bold;text-shadow:0 2px 6px #000;pointer-events:none;text-align:center}
   .menu{position:absolute;inset:0;background:rgba(10,30,20,.92);display:flex;flex-direction:column;align-items:center;justify-content:safe center;gap:12px;padding:16px;overflow-y:auto;box-sizing:border-box;touch-action:pan-y}
   .menu h1{margin:0 0 8px;font-size:34px}
   .menu h2{margin:8px 0 0;font-size:18px;font-weight:normal;opacity:.85}
@@ -21,6 +21,31 @@
   .help{font-size:14px;opacity:.85;max-width:420px;text-align:center;line-height:1.6}
   .hidden{display:none!important}
   /* ---- スタート画面 ---- */
+  #title{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#fff;background:#06120c;cursor:pointer}
+  #title.hidden{display:none}
+  #title .tBg{position:absolute;inset:-20%;background:radial-gradient(60% 50% at 50% 40%,rgba(242,212,61,.25),transparent 70%),repeating-linear-gradient(115deg,#0d2a1c 0 60px,#0b2318 60px 120px);animation:tPan 18s linear infinite}
+  #title .tBg::after{content:'';position:absolute;left:50%;top:52%;width:120vmax;height:2px;background:linear-gradient(90deg,transparent,#fff,transparent);transform:translateX(-50%);opacity:.35}
+  @keyframes tPan{to{transform:translateX(120px)}}
+  #title .tIn{position:relative;text-align:center;display:flex;flex-direction:column;align-items:center;gap:18px;padding:16px}
+  #title .tKick{font:900 13px/1 system-ui;letter-spacing:.5em;padding:7px 10px 7px 16px;border:2px solid #f2d43d;color:#f2d43d;border-radius:4px;animation:tIn .6s .1s both}
+  #title .tLogo{margin:0;line-height:.9;animation:tIn .7s .25s both}
+  #title .tLogo span{display:block;font:italic 900 clamp(64px,17vw,150px)/.9 system-ui;letter-spacing:.02em;background:linear-gradient(180deg,#fff 30%,#f2d43d 75%,#d9a40f);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 6px 0 #0b1a12) drop-shadow(0 10px 24px rgba(0,0,0,.6));transform:skewX(-8deg)}
+  #title .tLogo b{display:block;font-size:clamp(20px,5vw,32px);letter-spacing:.6em;margin-top:8px;padding-left:.6em}
+  #title .tPlay{font:900 26px system-ui;letter-spacing:.12em;padding:18px 64px;border:none;border-radius:999px;background:linear-gradient(180deg,#ffe36b,#f2c21d);color:#10241a;box-shadow:0 0 0 4px rgba(242,212,61,.25),0 10px 30px rgba(242,194,29,.45);cursor:pointer;animation:tIn .6s .45s both,tPulse 1.6s 1.2s ease-in-out infinite}
+  #title .tTap{font-size:13px;opacity:.7;animation:tBlink 1.4s infinite}
+  #title .tSub{display:flex;gap:18px;margin-top:6px;font-size:13px;animation:tIn .6s .6s both}
+  #title .tSub a{color:rgba(255,255,255,.75);text-decoration:none;border-bottom:1px solid rgba(255,255,255,.3);padding-bottom:2px}
+  @keyframes tIn{from{opacity:0;transform:translateY(24px) scale(.96)}}
+  @keyframes tPulse{50%{transform:scale(1.05)}}
+  @keyframes tBlink{50%{opacity:.25}}
+  #wipe{position:absolute;inset:0;z-index:30;pointer-events:none;overflow:hidden}
+  #wipe i{position:absolute;top:-20%;bottom:-20%;left:-220%;width:140%;transform:skewX(-18deg);background:#f2d43d}
+  #wipe i:nth-child(2){background:#10241a}
+  #wipe i:nth-child(3){background:#2f7cf6}
+  #wipe.go i{animation:wipeGo .9s cubic-bezier(.7,0,.3,1) both}
+  #wipe.go i:nth-child(2){animation-delay:.06s}
+  #wipe.go i:nth-child(3){animation-delay:.12s}
+  @keyframes wipeGo{0%{left:-220%}45%,55%{left:-20%}100%{left:130%}}
   #menu{justify-content:flex-start;padding:0;background:radial-gradient(1200px 600px at 50% -10%,#24543a 0%,#10241a 60%,#0b1a12 100%)}
   #menu .mwrap{width:min(860px,100%);padding:20px 16px 28px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px}
   #menu .hero{text-align:center;padding:10px 0 2px}
@@ -132,8 +157,8 @@
   #bFlat{right:0;bottom:40px;width:72px;height:72px;background:rgba(242,212,61,.8);color:#222;text-shadow:none}
   #bSlice{right:84px;bottom:80px;width:64px;height:64px;background:rgba(190,120,255,.78)}
   #bKick{right:84px;bottom:6px;width:64px;height:64px;background:rgba(255,120,170,.78)}
-  #bCut{right:168px;bottom:40px;background:rgba(190,120,255,.72)}
-  #pad{width:250px!important}
+  #bCut{right:5px;bottom:132px;background:rgba(190,120,255,.72)}
+  #pad{height:205px!important}
 </style>
 </head>
 <body>
@@ -162,7 +187,18 @@
     <div id="netst"></div>
     <div class="row"><button id="lbStart">試合開始</button><button id="lbLeave" class="sub">やめる</button></div>
   </div>
-  <div class="menu" id="menu">
+  <div id="title">
+    <div class="tBg"></div>
+    <div class="tIn">
+      <div class="tKick">ACE OPEN</div>
+      <h1 class="tLogo"><span>TENNIS</span><b>テニス</b></h1>
+      <button id="tPlay" class="tPlay">▶ プレイ</button>
+      <div class="tTap">タップしてスタート</div>
+      <nav class="tSub"><a href="#" id="tOnline">オンライン</a><a href="learn.html">動き方</a><a href="?viewer">モーション確認</a></nav>
+    </div>
+  </div>
+  <div id="wipe"><i></i><i></i><i></i></div>
+  <div class="menu hidden" id="menu">
     <div class="mwrap">
       <header class="hero">
         <div class="kicker">ACE OPEN</div>
@@ -193,7 +229,7 @@
         </div>
         <div class="mcard">
           <h3>📋 テニスの動き方</h3>
-          <p>ダブルスの後衛・前衛の動き方をOK・NGの30パターンで解説。作戦ボードつき。</p>
+          <p>ダブルスの後衛・前衛の動き方をOK・NGの60パターンで解説。作戦ボードつき。</p>
           <div class="mrow"><a class="mbtn" href="learn.html">OK・NG パターン</a><a class="mbtn ghost" href="learn.html#board">作戦ボード</a></div>
         </div>
         <div class="mcard">
@@ -257,7 +293,7 @@ document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => {
 document.querySelectorAll('[data-pos]').forEach(b => b.onclick = () => { pos = b.dataset.pos; sel('[data-pos]', b); });
 document.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => { level = +b.dataset.lv; sel('[data-lv]', b); });
 function sel(q, b){ document.querySelectorAll(q).forEach(x => x.classList.remove('sel')); b.classList.add('sel'); }
-document.getElementById('start').onclick = () => { online = false; if (fmt === 'tour' && mode === 'singles') startTournament(); else startMatch(); };
+document.getElementById('start').onclick = () => { online = false; wipe(() => { if (fmt === 'tour' && mode === 'singles') startTournament(); else startMatch(); }); };
 // 選手カード
 { const grid = document.getElementById('charGrid'), stars = n => '★'.repeat(n) + '☆'.repeat(5 - n);
   const best = c => Math.max(...Object.values(c.st));
@@ -315,6 +351,17 @@ function playHit(power = 1){
   // ガットの響き：ごく小さく短い
   const s1 = a.createOscillator(), gs = a.createGain(); s1.type = 'sine'; s1.frequency.value = 520 + Math.random() * 60;
   env(a, gs, t, 0.08 * v, 0.07); s1.connect(gs); gs.connect(o); s1.start(t); s1.stop(t + 0.08);
+}
+function playCrowd(mine){ // 点が入ったとき：観客のざわめき（ノイズを重ねてふくらませる）
+  const a = actx; if (!a || a.state !== 'running') return;
+  const t = a.currentTime, dur = 1.6 + Math.random() * 0.4;
+  for (let i = 0; i < 3; i++) {
+    const n = noise(a); n.loop = true; const bp = a.createBiquadFilter(), g = a.createGain();
+    bp.type = 'bandpass'; bp.frequency.value = 450 + i * 380 + Math.random() * 120; bp.Q.value = 0.7;
+    const pk = (mine ? 0.16 : 0.1) / (i + 1);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(pk, t + 0.25); g.gain.setValueAtTime(pk, t + 0.6); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    n.connect(bp); bp.connect(g); g.connect(out(a)); n.start(t, Math.random() * 0.2); n.stop(t + dur + 0.05);
+  }
 }
 function playBounce(){
   const a = actx; if (!a || a.state !== 'running') return;
@@ -439,7 +486,19 @@ function showBracket(){
   document.getElementById('brGo').onclick = () => { el.classList.add('hidden'); startMatch(); };
   document.getElementById('brQuit').onclick = () => { tour = null; el.classList.add('hidden'); toMenu(); };
 }
-function toMenu(){ state = 'menu'; players = []; human = null; msgEl.textContent = ''; document.getElementById('result').classList.add('hidden'); menu.classList.remove('hidden'); }
+// 画面切り替え：斜めの帯が横切り、隠れている間に画面を差し替える
+function wipe(cb){
+  const w = document.getElementById('wipe'); w.classList.remove('go'); void w.offsetWidth; w.classList.add('go');
+  setTimeout(cb, 430); setTimeout(() => w.classList.remove('go'), 1050);
+}
+{ const t = document.getElementById('title');
+  if (VIEWER || /[?&](host|join|localsig|room)/.test(location.search)) t.classList.add('hidden');
+  const go = () => { audio(); wipe(() => { t.classList.add('hidden'); menu.classList.remove('hidden'); }); };
+  t.onclick = e => { if (e.target.closest('a')) return; go(); };
+  document.getElementById('tOnline').onclick = e => { e.preventDefault(); audio(); wipe(() => { t.classList.add('hidden'); menu.classList.remove('hidden'); setTimeout(() => document.getElementById('hostBtn').scrollIntoView({ block: 'center' }), 50); }); };
+}
+function toMenu(){ wipe(toMenu0); }
+function toMenu0(){ state = 'menu'; players = []; human = null; msgEl.textContent = ''; document.getElementById('result').classList.add('hidden'); menu.classList.remove('hidden'); }
 function confetti(){
   const el = document.getElementById('result'), cols = ['#f2d43d', '#ff4fa3', '#2fbf71', '#3a7bd5', '#ff8a1f', '#ffffff'];
   for (let i = 0; i < 90; i++) { const c = document.createElement('i'); c.className = 'confetti'; c.style.left = Math.random() * 100 + '%'; c.style.background = cols[i % cols.length]; c.style.animationDuration = (2.5 + Math.random() * 2.5) + 's'; c.style.animationDelay = Math.random() * 1.2 + 's'; el.appendChild(c); }
@@ -1033,7 +1092,7 @@ function serve(p){
 function pointTo(team, reason){
   if (state === 'dead') return;
   state = 'dead'; timer = 1.6; ball.live = false;
-  showMsg(reason + '  ' + teamName(team) + 'のポイント' + (team === myTeam() ? '！' : ''), 1.6);
+  playCrowd(team === myTeam()); showMsg(reason + '\n' + teamName(team) + 'のポイント' + (team === myTeam() ? '！' : ''), 1.6);
   score.pts[team]++;
   const [a, b] = score.pts;
   if ((a >= 4 || b >= 4) && Math.abs(a - b) >= 2) {
@@ -1048,7 +1107,7 @@ function pointTo(team, reason){
         state = 'over'; timer = 0;
         const [s0, s1] = score.sets;
         if (online) showMsg((w === myTeam() ? `🏆 ${teamName(myTeam())}の勝ち！` : `${teamName(w)}の勝ち…`) + `  セット ${s0}-${s1}\nクリック/タップでメニュー`, 999);
-        else { msgEl.textContent = ''; matchOver(w === myTeam()); }
+        else { showMsg('ゲームセット', 1.2); const won = w === myTeam(); setTimeout(() => { if (state === 'over') { msgEl.textContent = ''; matchOver(won); } }, 1200); }
         return;
       }
       score.games = [0, 0];
@@ -1342,21 +1401,27 @@ renderer.setPixelRatio(Math.min(2, devicePixelRatio));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
-{ // 空（グラデーションと雲）
-  const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
+{ // 空（グラデーションと雲）：高解像度で、雲は小さな玉を重ねて輪郭を出す
+  const W = 2048, H = 1024, c = document.createElement('canvas'); c.width = W; c.height = H;
   const g = c.getContext('2d');
-  const grd = g.createLinearGradient(0, 0, 0, 512);
-  grd.addColorStop(0, '#2f7fd6'); grd.addColorStop(0.55, '#7db8ec'); grd.addColorStop(1, '#d9ecfa');
-  g.fillStyle = grd; g.fillRect(0, 0, 1024, 512);
-  for (let i = 0; i < 14; i++) {
-    const cx = Math.random() * 1024, cy = 40 + Math.random() * 220, w = 60 + Math.random() * 110;
-    for (let k = 0; k < 7; k++) {
-      const rg = g.createRadialGradient(cx + (k - 3) * w * 0.3, cy + Math.sin(k) * 10, 0, cx + (k - 3) * w * 0.3, cy + Math.sin(k) * 10, w * 0.45);
-      rg.addColorStop(0, 'rgba(255,255,255,.85)'); rg.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = rg; g.fillRect(0, 0, 1024, 512);
+  const grd = g.createLinearGradient(0, 0, 0, H);
+  grd.addColorStop(0, '#2a74cc'); grd.addColorStop(0.55, '#79b4ea'); grd.addColorStop(1, '#dcedfa');
+  g.fillStyle = grd; g.fillRect(0, 0, W, H);
+  const puff = (x, y, r, a) => { const rg = g.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, `rgba(255,255,255,${a})`); rg.addColorStop(0.6, `rgba(255,255,255,${a * 0.6})`); rg.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = rg; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); };
+  for (let i = 0; i < 11; i++) { // ふんわりした積雲：横長の楕円に玉を敷き、底は平らに、上はもこもこ
+    const cx = Math.random() * W, cy = 140 + Math.random() * 380, w = 160 + Math.random() * 240, h = w * (0.32 + Math.random() * 0.15);
+    g.save(); g.filter = 'blur(3px)';
+    for (let k = 0; k < 55; k++) {
+      const u = (Math.random() - .5) * 2, top = Math.sqrt(1 - u * u);
+      const x = cx + u * w, y = cy - Math.random() * h * top, r = (0.25 + 0.35 * top) * h * (0.7 + Math.random() * 0.5);
+      puff(x, Math.min(y, cy - r * 0.35), r, 0.5);
     }
+    g.globalCompositeOperation = 'source-atop'; // 下側に薄い影
+    const sh = g.createLinearGradient(0, cy - h, 0, cy + h * 0.3); sh.addColorStop(0, 'rgba(255,255,255,0)'); sh.addColorStop(1, 'rgba(150,175,205,.35)');
+    g.restore();
   }
-  scene.background = new THREE.CanvasTexture(c);
+  const tex = new THREE.CanvasTexture(c); tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false; tex.anisotropy = 4;
+  scene.background = tex;
 }
 scene.fog = new THREE.Fog('#cfe3f2', 70, 140);
 const camera = new THREE.PerspectiveCamera(45, 1, 0.5, 300);
