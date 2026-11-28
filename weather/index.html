@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>あまぐもレーダー</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;800&display=swap">
 <style>
   :root {
     --bg: #f3f6f9; --panel: #ffffffee; --fg: #13202b; --muted: #5b6b78; --accent: #1f6fd1;
@@ -39,13 +40,6 @@
   .sec { font-size: .78rem; letter-spacing: .1em; color: var(--muted); margin: 22px 0 8px; font-weight: 700; }
   .note { font-size: .75rem; color: var(--muted); }
   #pins:not(:empty) + #noPins { display: none; }
-  #hero .card { padding: 18px 16px 18px 8px; border-radius: 24px; gap: 14px; }
-  #hero .card > svg { width: 128px; height: 180px; }
-  #hero .ttl { font-size: 1.35rem; }
-  #hero .desc { font-size: .92rem; }
-  #hero .card::after { font-size: 6rem; bottom: -26px; }
-  #hero .big { font-size: 2.6rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; color: var(--lvfg); }
-  #hero .big small { font-size: 1rem; color: var(--muted); font-weight: 600; margin-left: 6px; }
   .panel {
     position: absolute; z-index: 1000; background: var(--panel); backdrop-filter: blur(6px);
     border-radius: 12px; box-shadow: 0 4px 16px #0003; padding: 10px 14px;
@@ -84,28 +78,37 @@
   #results li:hover { background: #8882; }
   #pins { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
   #pins:empty { display: none; }
-  #pins li { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: .95rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  #pins > li { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: .95rem; font-weight: 600; font-variant-numeric: tabular-nums; }
   #pins .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
   #pins .wx { flex: none; } #pins .rp { flex: none; width: 3em; text-align: right; color: var(--accent); }
-  #pins li { flex-wrap: wrap; }
-  .card { flex-basis: 100%; display: flex; gap: 12px; align-items: center; margin: 4px 0 8px; padding: 10px 12px 10px 6px;
-          border-radius: 16px; background: var(--lvbg); position: relative; overflow: hidden; }
-  .card::after { content: attr(data-lv); position: absolute; right: 10px; bottom: -14px; font-size: 3.6rem; font-weight: 800;
-          color: var(--lvfg); opacity: .14; letter-spacing: -.04em; pointer-events: none; font-variant-numeric: tabular-nums; }
-  .card { font-weight: 400; }
-  .card > svg { width: 116px; height: 162px; flex: none; filter: drop-shadow(0 3px 4px #0002); }
-  .ot { min-width: 0; display: flex; flex-direction: column; gap: 4px; position: relative; z-index: 1; }
-  .ot .ttl { font-size: 1.2rem; font-weight: 800; line-height: 1.25; color: var(--lvfg); }
-  .ot .desc { font-size: .85rem; line-height: 1.5; }
-  .ot .tmp { font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .ot .tmp b { color: #e5533d; font-weight: 700; } .ot .tmp b.lo { color: #2f7bd8; }
-  .warm { display: inline-flex; gap: 3px; align-items: center; font-size: .68rem; color: var(--muted); }
-  .warm i { width: 14px; height: 6px; border-radius: 3px; background: #8884; }
+  #pins > li { flex-wrap: wrap; }
+  .card { flex-basis: 100%; display: flex; gap: 10px; align-items: center; margin: 4px 0 10px; padding: 14px 14px 14px 4px;
+          border-radius: 4px; position: relative; overflow: hidden; color: #2f2723; font-weight: 400;
+          background: var(--lvbg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 .3 0 0 0 0 .25 0 0 0 0 .2 0 0 0 .08 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+          box-shadow: 0 2px 10px #0000001a; }
+  .card::before { content: ""; position: absolute; inset: 7px; border: 1px solid var(--lvfg); opacity: .35; pointer-events: none; }
+  .card::after { content: attr(data-lv); position: absolute; right: 14px; bottom: -14px; font: 800 4rem/1 "Shippori Mincho", serif;
+          color: var(--lvfg); opacity: .12; pointer-events: none; }
+  .card > svg { width: 92px; height: 345px; max-height: 300px; flex: none; }
+  .ot { min-width: 0; display: flex; flex-direction: column; gap: 6px; position: relative; z-index: 1; }
+  .ot .ttl { font: 800 1.3rem/1.3 "Shippori Mincho", "Hiragino Mincho ProN", serif; color: var(--lvfg); letter-spacing: .04em; }
+  .ot .desc { font-size: .85rem; line-height: 1.6; }
+  .items { list-style: none; margin: 2px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 6px; }
+  .items li { font-size: .72rem; padding: 2px 8px; border: 1px solid #2f272333; border-radius: 99px; background: #ffffff70; }
+  .ot .tmp { font-size: .75rem; color: #6b5d55; font-variant-numeric: tabular-nums; }
+  .ot .tmp b { color: #c4483a; font-weight: 700; } .ot .tmp b.lo { color: #2f6db5; }
+  .warm { display: inline-flex; gap: 3px; align-items: center; font-size: .68rem; color: #6b5d55; }
+  .warm i { width: 14px; height: 5px; border-radius: 3px; background: #2f272322; }
   .warm i.on { background: var(--lvfg); }
-  .umb { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; font-size: .78rem; font-weight: 700;
-         padding: 3px 10px 3px 6px; border-radius: 99px; background: #2f7bd8; color: #fff; }
-  .umb.fold { background: #fff; color: #2f7bd8; box-shadow: inset 0 0 0 1.5px #2f7bd8; }
-  .umb svg { width: 16px; height: 16px; filter: none; }
+  .umb { display: flex; align-items: center; gap: 8px; margin-top: 2px; font-size: .82rem; font-weight: 700; color: #2f5f97; }
+  .umb small { display: block; font-size: .6rem; letter-spacing: .2em; color: #6b5d55; font-weight: 600; }
+  .umb .umbart { width: 22px; height: 64px; flex: none; }
+  #hero .card { padding: 20px 18px 20px 6px; gap: 12px; }
+  #hero .card > svg { width: 112px; height: 420px; max-height: 380px; }
+  #hero .ttl { font-size: 1.55rem; }
+  #hero .card::after { font-size: 6rem; bottom: -24px; }
+  #hero .big { font-size: 2.6rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; color: var(--lvfg); }
+  #hero .big small { font-size: 1rem; color: #6b5d55; font-weight: 600; margin-left: 6px; }
   #pinbar { display: flex; gap: 6px; align-items: center; margin: 10px 0 12px; font-size: .8rem; }
   .seg { display: inline-flex; border-radius: 99px; background: #8882; padding: 2px; }
   .seg button { width: auto; height: 26px; padding: 0 10px; font-size: .78rem; background: none; color: var(--fg); }
@@ -117,6 +120,7 @@
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="pen"><feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="2" seed="7"/><feDisplacementMap in="SourceGraphic" scale="1.1"/></filter></svg>
 <nav id="tabs" role="tablist">
   <button id="t0" role="tab" aria-selected="true">雨雲レーダー</button>
   <button id="t1" role="tab" aria-selected="false">天気と服装</button>
@@ -308,92 +312,145 @@ document.getElementById('gM').onclick = () => setGender('M');
 document.getElementById('gF').onclick = () => setGender('F');
 
 // 最高・最低気温、降水確率、風から服装を決める
+// 段階ごとの服装（色・アイテム）。figure() がこの内容どおりに描く
+const LOOKS = {
+  F: [null,
+    { title: '真夏の装い', text: '風が通るノースリーブワンピースで涼しく', dress: '#a9b99a', sleeve: 'none', shoes: 'sandal', bag: true,
+      items: ['ノースリーブワンピース', 'レザーサンダル', 'かごバッグ'] },
+    { title: '半袖でちょうどいい', text: '半袖ブラウスにプリーツスカートで', top: '#f4f0e8', sleeve: 'short', skirt: '#3d4a68', shoes: 'sneaker',
+      items: ['半袖ブラウス', 'プリーツスカート', '白スニーカー'] },
+    { title: '長袖1枚で', text: '長袖ブラウス1枚で軽やかに', top: '#ece3d2', sleeve: 'long', skirt: '#3f5a4b', shoes: 'flat',
+      items: ['長袖ブラウス', 'プリーツスカート', 'フラットシューズ'] },
+    { title: '薄着にカーディガン', text: '長袖に薄手のカーディガンを羽織って', top: '#f4f0e8', sleeve: 'long', outer: 'cardigan', outerC: '#c4b8dc', skirt: '#3d4a68', shoes: 'loafer',
+      items: ['薄手カーディガン', '長袖カットソー', 'ミディスカート', 'ローファー'] },
+    { title: 'トレンチを羽織る', text: 'ニットにトレンチコートを合わせて', top: '#2e2b2b', sleeve: 'long', outer: 'trench', outerC: '#cdb38c', pants: '#d8cbb2', shoes: 'loafer',
+      items: ['トレンチコート', '薄手ニット', 'ワイドパンツ', 'ローファー'] },
+    { title: 'コートとマフラー', text: 'ウールコートにマフラー、タイツで暖かく', top: '#9b9a98', sleeve: 'long', outer: 'coat', outerC: '#b88b5d', skirt: '#34405c', tights: true, scarf: '#d4a43a', shoes: 'boot',
+      items: ['ウールコート', 'マフラー', 'ニット', 'タイツ', 'ショートブーツ'] },
+    { title: 'ダウンで完全防寒', text: 'ロングダウンにマフラーと手袋を', sleeve: 'long', outer: 'down', outerC: '#ebe6dc', pants: '#2b2a2e', scarf: '#b5443c', gloves: '#b5443c', shoes: 'boot',
+      items: ['ロングダウン', 'マフラー', '手袋', 'ワイドパンツ', 'ブーツ'] }],
+  M: [null,
+    { title: '真夏の装い', text: '白Tシャツにショートパンツで涼しく', top: '#f6f4ef', sleeve: 'short', shorts: '#cbb791', shoes: 'sandal',
+      items: ['白Tシャツ', 'チノショーツ', 'レザーサンダル'] },
+    { title: '半袖でちょうどいい', text: '半袖リネンシャツにチノパンで', top: '#a9c3de', sleeve: 'short', pants: '#cbb791', shoes: 'sneaker', collar: true,
+      items: ['半袖リネンシャツ', 'チノパン', '白スニーカー'] },
+    { title: '長袖1枚で', text: 'オックスフォードシャツ1枚で', top: '#a3bcdb', sleeve: 'long', pants: '#2f3a55', shoes: 'loafer', collar: true,
+      items: ['オックスフォードシャツ', 'スラックス', 'ローファー'] },
+    { title: '薄着にカーディガン', text: '長袖Tシャツにカーディガンを羽織って', top: '#f6f4ef', sleeve: 'long', outer: 'cardigan', outerC: '#a8a8ad', pants: '#34405e', shoes: 'sneaker',
+      items: ['カーディガン', '長袖Tシャツ', 'チノパン', 'スニーカー'] },
+    { title: 'ジャケットを羽織る', text: 'ニットにジャケットを重ねて', top: '#34405e', sleeve: 'long', outer: 'jacket', outerC: '#5e626a', pants: '#74777d', shoes: 'loafer',
+      items: ['ジャケット', 'クルーネックニット', 'スラックス', '革靴'] },
+    { title: 'コートとマフラー', text: 'チェスターコートにマフラーで暖かく', top: '#9b9a98', sleeve: 'long', outer: 'coat', outerC: '#2c3650', pants: '#47494f', scarf: '#d4a43a', shoes: 'loafer',
+      items: ['チェスターコート', 'マフラー', 'ニット', 'スラックス', '革靴'] },
+    { title: 'ダウンで完全防寒', text: 'ダウンジャケットにマフラーと手袋を', sleeve: 'long', outer: 'down', outerC: '#283149', pants: '#2b2a2e', scarf: '#b5443c', gloves: '#b5443c', shoes: 'boot',
+      items: ['ダウンジャケット', 'マフラー', '手袋', 'パンツ', 'ブーツ'] }]
+};
 function outfit(w) {
-  const F = gender === 'F';
   const feel = w.max - Math.max(0, w.wind - 18) / 6; // 風が強いと体感を下げる
-  let o;
-  if (feel >= 27) o = { lv: 1, title: '真夏の装い', top: 'tee', bottom: F ? 'dress' : 'shorts', text: F ? 'ノースリーブや半袖のワンピースで涼しく' : '半袖Tシャツにショートパンツで' };
-  else if (feel >= 22) o = { lv: 1, title: '半袖でちょうどいい', top: 'tee', bottom: F ? 'skirt' : 'pants', text: F ? '半袖ブラウスにスカートで' : '半袖シャツにチノパンで' };
-  else if (feel >= 18) o = { lv: 2, title: '長袖1枚で', top: 'long', bottom: F ? 'skirt' : 'pants', text: F ? '長袖ブラウスや薄手ニットで' : '長袖シャツ1枚で' };
-  else if (feel >= 15) o = { lv: 2, title: '薄着にカーディガン', top: 'long', outer: 'cardigan', bottom: F ? 'skirt' : 'pants', text: '長袖に薄手のカーディガンを羽織って' };
-  else if (feel >= 11) o = { lv: 3, title: 'ジャケットを羽織る', top: 'long', outer: F ? 'trench' : 'jacket', bottom: 'pants', text: F ? 'ニットにトレンチコートを' : 'セーターにジャケットを' };
-  else if (feel >= 6) o = { lv: 4, title: 'コートとマフラー', top: 'long', outer: 'coat', bottom: F ? 'skirt' : 'pants', tights: F, scarf: true, text: F ? 'ウールコートにマフラー、タイツで' : '厚手のコートにマフラーを' };
-  else o = { lv: 5, title: 'ダウンで完全防寒', top: 'long', outer: 'down', bottom: 'pants', scarf: true, gloves: true, text: 'ダウンジャケットにマフラーと手袋を' };
-  if (w.max - w.min >= 10 && o.lv <= 2 && !o.outer) { o.outer = 'cardigan'; o.text += '。朝晩は冷えるので羽織りものを'; }
+  const lv7 = feel >= 27 ? 1 : feel >= 22 ? 2 : feel >= 18 ? 3 : feel >= 15 ? 4 : feel >= 11 ? 5 : feel >= 6 ? 6 : 7;
+  const o = { ...LOOKS[gender][lv7], lv7, lv: [0, 1, 1, 2, 2, 3, 4, 5][lv7] };
+  o.items = [...o.items];
+  if (w.max - w.min >= 10 && lv7 <= 3) { o.text += '。朝晩は冷えるので羽織りものを'; o.items.push('羽織りもの'); }
   // 傘：雨が多い・確率が高いなら長傘、少しだけなら折りたたみ
   if (w.rain >= 60 || (w.rain >= 40 && (w.psum ?? 0) >= 3)) o.umb = 'long';
   else if (w.rain >= 30) o.umb = 'fold';
   return o;
 }
 const UMB = { long: '長傘を持って出かけよう', fold: '折りたたみ傘をカバンに' };
-const LV = [null, ['#ffd9a8', '#c2560f'], ['#ffeec2', '#a87400'], ['#d9eecf', '#3c7d2c'], ['#d3e3f6', '#2a64b0'], ['#d8d6f6', '#4b3fb0']];
+const LV = [null, ['#f6dcc2', '#b5652a'], ['#f4e9cc', '#9a7a1c'], ['#dfe8d6', '#4d7a3e'], ['#d9e3ef', '#3b6497'], ['#dedbef', '#5a4f9c']];
 
-// 服を着た人物のイラスト（SVG）
+// ファッションイラスト風の人物（SVG）
 function figure(o) {
-  const F = gender === 'F', skin = '#f3c9a6', hair = F ? '#5a3a2a' : '#2f2a28';
-  const topC = { tee: F ? '#ff8fa3' : '#5ec2b7', long: F ? '#f4f1ea' : '#8fb3e0' }[o.top];
-  const outC = { cardigan: '#c9a6e8', jacket: '#6b7b8c', trench: '#c8a67a', coat: F ? '#b5484c' : '#3d4a5c', down: F ? '#f0eee8' : '#1f2a44' }[o.outer];
-  const botC = o.bottom === 'shorts' ? '#c9b38a' : o.bottom === 'dress' ? topC : o.bottom === 'skirt' ? '#3f4b6e' : '#2e3a59';
-  const legC = o.tights ? '#3a3340' : skin;
-  const len = { cardigan: 86, jacket: 88, trench: 106, coat: 104, down: 92 }[o.outer] || 0;
-  const sleeveSkin = o.top === 'tee' && !o.outer;
+  const F = gender === 'F', ink = '#4b3b34', skin = '#f1d2bb', hair = F ? '#4a3026' : '#2a2422';
+  const P = (d, fill, extra = '') => `<path d="${d}" fill="${fill}" stroke="${ink}" stroke-width=".7" stroke-linejoin="round" stroke-linecap="round" ${extra}/>`;
+  const L = (d, w = .5, c = ink) => `<path d="${d}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" opacity=".7"/>`;
   let g = '';
-  // 後ろ髪
-  if (F) g += `<path d="M34 24 Q34 6 50 6 Q66 6 66 24 L68 44 Q50 50 32 44 Z" fill="${hair}"/>`;
+  // ポニーテール（後ろ）
+  if (F) g += P('M64 18 C76 22 76 42 68 54 C69 42 67 32 61 27 Z', hair);
   // 脚
-  if (o.bottom === 'pants') g += `<rect x="37" y="80" width="12" height="50" rx="4" fill="${botC}"/><rect x="51" y="80" width="12" height="50" rx="4" fill="${botC}"/>`;
-  else {
-    g += `<rect x="39" y="90" width="9" height="40" rx="4" fill="${legC}"/><rect x="52" y="90" width="9" height="40" rx="4" fill="${legC}"/>`;
-    if (o.bottom === 'shorts') g += `<path d="M35 80 H65 L66 100 H52 L50 92 L48 100 H34 Z" fill="${botC}"/>`;
-    else g += `<path d="M35 80 H65 L72 ${o.bottom === 'dress' ? 112 : 108} H28 Z" fill="${botC}"/>`;
-  }
+  const legC = o.tights ? '#2f2a30' : skin;
+  g += P('M51 118 C50 160 50 200 50 234 L55 234 C56 200 57 160 58 120 Z', legC) + P('M62 120 C63 160 66 200 68 234 L73 234 C72 200 70 160 70 118 Z', legC);
   // 靴
-  g += `<ellipse cx="42" cy="132" rx="8" ry="4" fill="#3b2f2f"/><ellipse cx="58" cy="132" rx="8" ry="4" fill="#3b2f2f"/>`;
-  // 腕
-  const armC = o.outer ? outC : (sleeveSkin ? skin : topC);
-  g += `<rect x="24" y="40" width="10" height="44" rx="5" fill="${armC}"/><rect x="66" y="40" width="10" height="44" rx="5" fill="${armC}"/>`;
-  if (sleeveSkin) g += `<rect x="23" y="39" width="12" height="14" rx="5" fill="${topC}"/><rect x="65" y="39" width="12" height="14" rx="5" fill="${topC}"/>`;
-  // 胴体（インナー）
-  g += `<path d="M32 42 Q32 36 40 36 H60 Q68 36 68 42 V84 H32 Z" fill="${topC}"/>`;
-  if (o.top === 'long' && !o.outer) g += `<path d="M44 36 L50 44 L56 36" fill="none" stroke="#0002" stroke-width="1.5"/>`;
+  const shoe = { sandal: skin, sneaker: '#f7f5f0', flat: '#2e2a2a', loafer: F ? '#2e2a2a' : '#6b4630', boot: '#2e2a2a' }[o.shoes];
+  if (o.shoes === 'boot') g += P('M48 212 L57 212 L58 234 L60 240 L45 240 L47 232 Z', shoe) + P('M66 212 L75 212 L75 234 L78 240 L63 240 L66 232 Z', shoe);
+  else g += P('M47 233 L56 233 L59 240 L44 240 Z', shoe) + P('M66 233 L74 233 L78 240 L63 240 Z', shoe);
+  if (o.shoes === 'sandal') g += L('M47 236 L57 236 M66 236 L76 236', 1.2, '#7a5236');
+  // ボトムス
+  if (o.pants) g += P('M47 106 L73 106 L76 234 L64 234 L60 138 L56 234 L44 234 Z', o.pants) + L('M53 130 L51 230 M67 130 L70 230', .4);
+  if (o.shorts) g += P('M47 106 L73 106 L76 150 L62 151 L60 134 L58 151 L44 150 Z', o.shorts);
+  const skirtC = o.skirt || o.dress;
+  if (skirtC) {
+    const bot = o.dress ? 200 : 196;
+    g += P(`M49 100 L71 100 L85 ${bot} Q60 ${bot + 5} 35 ${bot} Z`, skirtC);
+    for (let k = 1; k < 8; k++) g += L(`M${49 + k * 2.75} 102 L${35 + k * 6.25} ${bot + 1}`, .35);
+  }
+  // 腕（素肌）と手
+  const armL = 'M44 50 C38 70 36 95 38 134 L44 134 C43 100 45 75 50 60 Z', armR = 'M76 50 C82 70 84 95 82 134 L76 134 C77 100 75 75 70 60 Z';
+  g += P(armL, skin) + P(armR, skin);
+  const hand = o.gloves || skin;
+  g += P('M37.5 133 C36 140 38 146 41.5 146 C45 145 45 139 44.5 133 Z', hand) + P('M75.5 133 C75 139 75 145 78.5 146 C82 146 84 140 82.5 133 Z', hand);
+  // トップス
+  const topC = o.top || o.dress;
+  if (topC) {
+    g += P('M44 50 Q60 45 76 50 L72 104 L48 104 Z', topC);
+    if (o.sleeve === 'short') g += P('M44 50 C40 58 38 66 37 76 L46 77 C47 69 48 63 50 58 Z', topC) + P('M76 50 C80 58 82 66 83 76 L74 77 C73 69 72 63 70 58 Z', topC);
+    if (o.sleeve === 'long') g += P(armL, topC) + P(armR, topC);
+    if (o.collar) g += P('M55 47 L60 55 L52 56 Z', topC) + P('M65 47 L60 55 L68 56 Z', topC);
+    if (o.dress) g += L('M50 100 Q60 103 70 100', .6);
+  }
+  // 首
+  g += P('M56.5 34 L63.5 34 L64 47 Q60 50 56 47 Z', skin);
   // アウター
   if (o.outer === 'down') {
-    g += `<path d="M30 44 Q30 35 40 35 H60 Q70 35 70 44 V${len} H30 Z" fill="${outC}"/>`;
-    for (let y = 50; y < len; y += 10) g += `<path d="M30 ${y} H70" stroke="#0003" stroke-width="1.5"/>`;
-    g += `<path d="M50 36 V${len}" stroke="#0003" stroke-width="1.5"/>`;
-    g += `<rect x="22" y="40" width="13" height="44" rx="6" fill="${outC}"/><rect x="65" y="40" width="13" height="44" rx="6" fill="${outC}"/>`;
+    const bot = F ? 196 : 118;
+    g += P(`M41 48 Q60 42 79 48 L${F ? 84 : 79} ${bot} Q60 ${bot + 4} ${F ? 36 : 41} ${bot} Z`, o.outerC);
+    for (let y = 62; y < bot - 4; y += 14) g += L(`M${42 - (y - 48) * (F ? .04 : 0)} ${y} Q60 ${y + 3} ${78 + (y - 48) * (F ? .04 : 0)} ${y}`, .5);
+    g += L(`M60 46 L60 ${bot + 2}`, .5);
+    g += P('M43 49 C35 70 33 96 36 134 L46 134 C45 100 47 76 52 60 Z', o.outerC) + P('M77 49 C85 70 87 96 84 134 L74 134 C75 100 73 76 68 60 Z', o.outerC);
   } else if (o.outer) {
-    g += `<path d="M30 44 Q30 35 40 35 H47 L46 ${len} H30 Z" fill="${outC}"/><path d="M70 44 Q70 35 60 35 H53 L54 ${len} H70 Z" fill="${outC}"/>`;
-    if (o.outer !== 'cardigan') g += `<path d="M47 35 L42 50 L46 54 M53 35 L58 50 L54 54" fill="none" stroke="#0003" stroke-width="1.5"/>`;
-    if (o.outer === 'trench') g += `<rect x="30" y="74" width="40" height="4" fill="#8a6a45"/>`;
-    if (o.outer === 'cardigan') for (const y of [50, 60, 70]) g += `<circle cx="45" cy="${y}" r="1.3" fill="#fff9"/>`;
+    const bot = { cardigan: 116, jacket: 122, trench: F ? 186 : 170, coat: F ? 182 : 176 }[o.outer];
+    const spread = o.outer === 'cardigan' || o.outer === 'jacket' ? 0 : 6;
+    g += P(`M43 48 L56 46 L55 ${bot} L${41 - spread} ${bot} Z`, o.outerC) + P(`M77 48 L64 46 L65 ${bot} L${79 + spread} ${bot} Z`, o.outerC);
+    g += P('M43 49 C37 70 35 96 37 134 L45 134 C44 100 46 76 51 60 Z', o.outerC) + P('M77 49 C83 70 85 96 83 134 L75 134 C76 100 74 76 69 60 Z', o.outerC);
+    if (o.outer !== 'cardigan') g += P('M56 46 L50 62 L55 70 Z', o.outerC) + P('M64 46 L70 62 L65 70 Z', o.outerC);
+    if (o.outer === 'trench') g += P(`M41 100 L56 100 L56 104 L40 104 Z`, o.outerC) + P(`M64 100 L80 100 L80 104 L64 104 Z`, o.outerC) + L('M46 60 L46 92 M74 60 L74 92', .4);
+    if (o.outer === 'cardigan') g += [66, 80, 94, 108].map(y => `<circle cx="54" cy="${y}" r=".9" fill="${ink}" opacity=".5"/>`).join('');
+    if (o.outer === 'coat') g += L(`M48 120 L52 120 M68 120 L72 120`, .6);
   }
-  // 手（手袋）
-  g += `<circle cx="29" cy="86" r="5" fill="${o.gloves ? '#c0392b' : skin}"/><circle cx="71" cy="86" r="5" fill="${o.gloves ? '#c0392b' : skin}"/>`;
-  // 首・顔
-  g += `<rect x="45" y="30" width="10" height="8" fill="${skin}"/><circle cx="50" cy="20" r="12" fill="${skin}"/>`;
-  g += `<circle cx="45.5" cy="21" r="1.4" fill="#3a2a22"/><circle cx="54.5" cy="21" r="1.4" fill="#3a2a22"/><path d="M47 26 Q50 28 53 26" fill="none" stroke="#c0645a" stroke-width="1.3" stroke-linecap="round"/>`;
-  g += `<circle cx="42.5" cy="24.5" r="2" fill="#ff8a8a55"/><circle cx="57.5" cy="24.5" r="2" fill="#ff8a8a55"/>`;
-  // 前髪
-  g += F ? `<path d="M37 20 Q38 7 50 7 Q62 7 63 20 Q56 13 48 15 Q42 16 37 20 Z" fill="${hair}"/>`
-         : `<path d="M38 19 Q37 6 50 6 Q63 6 62 19 Q58 12 50 12 Q42 12 38 19 Z" fill="${hair}"/>`;
   // マフラー
-  if (o.scarf) g += `<path d="M38 33 Q50 40 62 33 L62 39 Q50 45 38 39 Z" fill="#e2b33c"/><rect x="54" y="38" width="7" height="18" rx="2" fill="#e2b33c"/><path d="M54 52 H61" stroke="#c0392b" stroke-width="2"/>`;
-  // 傘
-  if (o.umb === 'long') g += `<path d="M78 40 V126" stroke="#2f7bd8" stroke-width="3"/><path d="M74 46 L78 40 L82 46 L80 96 H76 Z" fill="#2f7bd8"/><path d="M78 126 q0 6 -5 5" fill="none" stroke="#3b2f2f" stroke-width="3" stroke-linecap="round"/>`;
-  if (o.umb === 'fold') g += `<rect x="73" y="88" width="9" height="22" rx="3" fill="#2f7bd8"/><rect x="76" y="83" width="3" height="6" fill="#3b2f2f"/><path d="M73 96 H82 M73 102 H82" stroke="#fff8" stroke-width="1"/>`;
-  return `<svg viewBox="0 0 100 140" role="img" aria-label="${o.title}の服装イラスト">${g}</svg>`;
+  if (o.scarf) g += P('M49 42 Q60 50 71 42 L72 51 Q60 58 48 51 Z', o.scarf) + P('M61 51 L67 51 L68 88 L60 88 Z', o.scarf) + L('M61 88 L61 91 M63 88 L63 91 M65 88 L65 91 M67 88 L67 91', .5);
+  // バッグ
+  if (o.bag) g += P('M76 128 Q79 116 84 128', 'none') + P('M73 128 L88 128 L86 142 L75 142 Z', '#d8bf8a') + L('M74 133 L87 133 M74.5 137 L86.5 137', .35);
+  // 顔
+  g += P('M50.5 22 C50.5 10 69.5 10 69.5 22 C69.5 31 65 36 60 36 C55 36 50.5 31 50.5 22 Z', skin);
+  g += L('M54 21.3 Q56 20.2 58 21 M62 21 Q64 20.2 66 21.3', .55);
+  g += `<path d="M54.6 24.6 Q56.2 23.4 57.8 24.6" fill="none" stroke="${ink}" stroke-width=".8"/><path d="M62.2 24.6 Q63.8 23.4 65.4 24.6" fill="none" stroke="${ink}" stroke-width=".8"/>`;
+  g += L('M60.4 26 L59.8 29.2 L60.8 29.5', .45);
+  g += F ? `<path d="M58.2 31.8 Q60 33.2 61.8 31.8 Q60 31.2 58.2 31.8 Z" fill="#c4686a"/><circle cx="55" cy="28.5" r="1.8" fill="#f0a6a0" opacity=".45"/><circle cx="65" cy="28.5" r="1.8" fill="#f0a6a0" opacity=".45"/>`
+         : L('M58.4 32 Q60 32.8 61.6 32', .6);
+  // 前髪
+  g += F ? P('M50 23 C49 10 57 7.5 61 7.5 C68 7.5 71.5 13 70.5 24 C68.5 17 64 13.5 58 15.5 C54.5 17 52 20 50 23 Z', hair)
+         : P('M50.2 21 C49 10 56 7 61 7 C68 7 71.5 12 70 21 C67 14.5 58 13.5 52.5 17 Z', hair);
+  return `<svg viewBox="28 4 64 240" role="img" aria-label="${o.title}の服装イラスト"><g filter="url(#pen)">${g}</g></svg>`;
 }
-const umbIcon = t => `<svg viewBox="0 0 16 16"><path d="M1 8 Q8 0 15 8 Z" fill="currentColor"/><path d="M8 8 V13 q0 2 -2 1.5" fill="none" stroke="currentColor" stroke-width="1.6"/>${t === 'fold' ? '' : ''}</svg>`;
+// 傘のアイテムイラスト
+function umbArt(t) {
+  const ink = '#4b3b34';
+  const s = t === 'long'
+    ? `<path d="M20 6 L26 22 L23.5 88 L16.5 88 L14 22 Z" fill="#7d9ec2" stroke="${ink}" stroke-width=".8"/><path d="M20 10 L20 86 M17 30 L18 86 M23 30 L22 86" stroke="${ink}" stroke-width=".35" opacity=".5"/><path d="M20 88 L20 104 Q20 114 12 111" fill="none" stroke="#7a5236" stroke-width="2.6" stroke-linecap="round"/>`
+    : `<path d="M13 40 L27 40 L27 98 Q27 103 22 103 L18 103 Q13 103 13 98 Z" fill="#7d9ec2" stroke="${ink}" stroke-width=".8"/><path d="M13 58 L27 58 M13 78 L27 78" stroke="${ink}" stroke-width=".4" opacity=".5"/><rect x="16.5" y="26" width="7" height="14" rx="2" fill="#3b2f2f"/>`;
+  return `<svg class="umbart" viewBox="0 0 40 118" aria-hidden="true"><g filter="url(#pen)">${s}</g></svg>`;
+}
 const warmBar = lv => `<span class="warm" aria-label="上着の暖かさ ${lv}/5">暖かさ ${[1,2,3,4,5].map(n => `<i class="${n <= lv ? 'on' : ''}"></i>`).join('')}</span>`;
 
 function cardHTML(w, o, hero) {
-  return `<div class="card" data-lv="${Math.round(w.max)}°" style="--lvbg:${LV[o.lv][0]}88;--lvfg:${LV[o.lv][1]}">${figure(o)}
+  return `<div class="card" data-lv="${Math.round(w.max)}°" style="--lvbg:${LV[o.lv][0]};--lvfg:${LV[o.lv][1]}">${figure(o)}
     <div class="ot">${hero ? `<span class="big">${WX(w.code)} ${Math.round(w.temp)}°<small>いま</small></span>` : ''}
     <span class="ttl">${o.title}</span>${warmBar(o.lv)}
     <span class="desc">${o.text}</span>
+    <ul class="items">${o.items.map(t => `<li>${t}</li>`).join('')}</ul>
     <span class="tmp">最高 <b>${Math.round(w.max)}°</b> / 最低 <b class="lo">${Math.round(w.min)}°</b>　降水 ${w.rain}%</span>
-    ${o.umb ? `<span class="umb ${o.umb}">${umbIcon(o.umb)}${UMB[o.umb]}</span>` : ''}</div></div>`;
+    ${o.umb ? `<span class="umb ${o.umb}">${umbArt(o.umb)}<span><small>${o.umb === 'long' ? 'UMBRELLA' : 'FOLDING'}</small>${UMB[o.umb]}</span></span>` : ''}</div></div>`;
 }
 let heroWx = null;
 function renderHero() {
