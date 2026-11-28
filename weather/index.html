@@ -52,11 +52,26 @@
   #results { list-style: none; margin: 0 0 8px; padding: 0; max-height: 40vh; overflow-y: auto; }
   #results li { padding: 8px 6px; border-bottom: 1px solid #8883; cursor: pointer; font-size: .9rem; }
   #results li:hover { background: #8882; }
-  #pins { list-style: none; margin: 0 0 8px; padding: 0; max-height: 30vh; overflow-y: auto; border-bottom: 1px solid #8883; }
+  #pins { list-style: none; margin: 0 0 8px; padding: 0; max-height: 45vh; overflow-y: auto; border-bottom: 1px solid #8883; }
   #pins:empty { display: none; }
   #pins li { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: .85rem; font-variant-numeric: tabular-nums; }
   #pins .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
   #pins .wx { flex: none; } #pins .rp { flex: none; width: 3em; text-align: right; color: var(--accent); }
+  #pins li { flex-wrap: wrap; }
+  .outfit { flex-basis: 100%; display: flex; gap: 8px; align-items: center; padding: 4px 6px 8px 22px; }
+  .figs { display: flex; gap: 2px; font-size: 1.6rem; line-height: 1; flex: none; }
+  .ot { min-width: 0; font-size: .78rem; line-height: 1.4; }
+  .ot b { font-size: .85rem; }
+  .warm { display: inline-flex; gap: 2px; vertical-align: middle; margin-left: 4px; }
+  .warm i { width: 8px; height: 8px; border-radius: 2px; background: #8884; }
+  .warm i.on { background: #ff7a45; }
+  .umb { color: var(--accent); font-weight: 600; }
+  #pinbar { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; font-size: .8rem; }
+  #pinbar:has(+ #pins:empty) { display: none; }
+  .seg { display: inline-flex; border-radius: 99px; background: #8882; padding: 2px; }
+  .seg button { width: auto; height: 26px; padding: 0 10px; font-size: .78rem; background: none; color: var(--fg); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  #shareBtn { width: auto; height: 26px; padding: 0 10px; font-size: .78rem; margin-left: auto; }
   #pins button, .ghost { background: none; color: var(--muted); width: 28px; height: 28px; font-size: .9rem; }
   #pinBtn { color: #e0a800; font-size: 1.3rem; width: 32px; height: 32px; }
   #fc h2 { margin-bottom: 0; }
@@ -74,6 +89,7 @@
     <button type="submit" aria-label="検索" style="width:36px;height:36px">🔍</button>
   </form>
   <ul id="results" hidden></ul>
+  <div id="pinbar"><span>服装</span><div class="seg"><button id="gM" type="button">👨 男性</button><button id="gF" type="button">👩 女性</button></div><button id="shareBtn" type="button">共有</button></div>
   <ul id="pins" aria-label="ピン留めした地点"></ul>
   <div class="row" style="justify-content:space-between">
     <h2 id="fcTitle">この場所の天気（読み込み中…）</h2>
@@ -248,13 +264,49 @@ function updatePinBtn() {
   b.ariaLabel = b.title = on ? 'ピン留めを外す' : 'この地点をピン留め';
 }
 let pinWx = [];
+let gender = 'M';
+try { gender = localStorage.getItem('gender') || 'M'; } catch {}
+function setGender(g) {
+  gender = g;
+  try { localStorage.setItem('gender', g); } catch {}
+  document.getElementById('gM').ariaPressed = g === 'M';
+  document.getElementById('gF').ariaPressed = g === 'F';
+  renderPins();
+}
+document.getElementById('gM').onclick = () => setGender('M');
+document.getElementById('gF').onclick = () => setGender('F');
+
+// 最高・最低気温、降水確率、風から服装を決める
+function outfit(w) {
+  const F = gender === 'F';
+  const feel = w.max - Math.max(0, w.wind - 18) / 6; // 風が強いと体感を下げる
+  const diff = w.max - w.min;
+  let o;
+  if (feel >= 27) o = { lv: 1, title: '真夏の服装', figs: F ? ['👗', '👡'] : ['👕', '🩳'], text: F ? '半袖ワンピースやノースリーブで' : '半袖Tシャツと短パンで' };
+  else if (feel >= 22) o = { lv: 1, title: '半袖でOK', figs: F ? ['👚', '👖'] : ['👕', '👖'], text: '半袖か薄手の長袖で' };
+  else if (feel >= 18) o = { lv: 2, title: '長袖1枚で', figs: F ? ['👚', '👗'] : ['👔', '👖'], text: '長袖シャツやブラウスで' };
+  else if (feel >= 15) o = { lv: 2, title: '薄着にカーディガン', figs: F ? ['👚', '🧶'] : ['👔', '🧶'], text: '長袖に薄手のカーディガンかパーカーを' };
+  else if (feel >= 11) o = { lv: 3, title: 'ジャケットを', figs: F ? ['🧥', '👢'] : ['🧥', '👖'], text: F ? 'ニットにトレンチコートやジャケットを' : 'セーターに薄手のジャケットを' };
+  else if (feel >= 6) o = { lv: 4, title: 'コートとマフラー', figs: ['🧥', '🧣'], text: F ? 'ウールコートにマフラーを' : '厚手のコートにマフラーを' };
+  else o = { lv: 5, title: 'ダウンでしっかり防寒', figs: ['🧥', '🧣', '🧤'], text: 'ダウンジャケットにマフラーと手袋を' };
+  if (diff >= 10 && o.lv <= 3 && !o.figs.includes('🧶')) { o.figs.push('🧶'); o.text += '。朝晩は冷えるので羽織るものも'; }
+  if (w.rain >= 50) { o.umb = '☂️ 傘を持って'; o.figs.push('☂️'); }
+  else if (w.rain >= 30) { o.umb = '🌂 折りたたみ傘があると安心'; o.figs.push('🌂'); }
+  return o;
+}
+const warmBar = lv => `<span class="warm" aria-label="上着の暖かさ ${lv}/5">${[1,2,3,4,5].map(n => `<i class="${n <= lv ? 'on' : ''}"></i>`).join('')}</span>`;
+
 function renderPins() {
   document.getElementById('pins').innerHTML = pins.map((p, i) => {
-    const w = pinWx[i];
+    const w = pinWx[i], o = w && w.max != null ? outfit(w) : null;
     return `<li><span class="nm" data-i="${i}" title="${esc(p.name)}">📍${esc(p.name)}</span>
       <span class="wx">${w ? `${WX(w.code)} ${Math.round(w.temp)}°` : '…'}</span>
       <span class="rp">${w && w.rain != null ? w.rain + '%' : ''}</span>
-      <button data-del="${i}" aria-label="${esc(p.name)}を削除">×</button></li>`;
+      <button data-del="${i}" aria-label="${esc(p.name)}を削除">×</button>
+      ${o ? `<div class="outfit"><div class="figs" aria-hidden="true">${o.figs.join('')}</div>
+        <div class="ot"><b>${o.title}</b>${warmBar(o.lv)}<br>${o.text}。
+        <span style="color:var(--muted)">最高${Math.round(w.max)}° / 最低${Math.round(w.min)}°</span>
+        ${o.umb ? `<br><span class="umb">${o.umb}</span>` : ''}</div></div>` : ''}</li>`;
   }).join('');
 }
 // ピン留め地点の天気をまとめて取得
@@ -264,14 +316,35 @@ async function loadPinWeather() {
   if (!pins.length) return;
   const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + pins.map(p => p.lat.toFixed(3)).join(',') +
     '&longitude=' + pins.map(p => p.lon.toFixed(3)).join(',') +
-    '&current=temperature_2m,weather_code&hourly=precipitation_probability&forecast_hours=1&timezone=Asia%2FTokyo';
+    '&current=temperature_2m,weather_code&hourly=precipitation_probability&forecast_hours=1' +
+    '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max&forecast_days=1&timezone=Asia%2FTokyo';
   try {
     let d = await (await fetch(url)).json();
     if (!Array.isArray(d)) d = [d];
-    pinWx = d.map(x => ({ temp: x.current.temperature_2m, code: x.current.weather_code, rain: x.hourly.precipitation_probability[0] }));
+    pinWx = d.map(x => ({
+      temp: x.current.temperature_2m, code: x.current.weather_code,
+      rain: x.daily.precipitation_probability_max[0] ?? x.hourly.precipitation_probability[0],
+      max: x.daily.temperature_2m_max[0], min: x.daily.temperature_2m_min[0], wind: x.daily.wind_speed_10m_max[0] ?? 0
+    }));
   } catch {}
   renderPins();
 }
+
+// 今日の服装をテキストで共有
+document.getElementById('shareBtn').onclick = async () => {
+  const btn = document.getElementById('shareBtn');
+  const text = '今日の服装（' + (gender === 'F' ? '女性' : '男性') + '）\n' + pins.map((p, i) => {
+    const w = pinWx[i]; if (!w || w.max == null) return '';
+    const o = outfit(w);
+    return `📍${p.name} ${WX(w.code)} ${Math.round(w.max)}°/${Math.round(w.min)}° 降水${w.rain}%\n${o.figs.join('')} ${o.title}：${o.text}${o.umb ? '\n' + o.umb : ''}`;
+  }).filter(Boolean).join('\n\n');
+  try { if (navigator.share) { await navigator.share({ text }); return; } } catch (e) { if (e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(text); btn.textContent = 'コピーしました'; }
+  catch { btn.textContent = 'コピーできませんでした'; }
+  setTimeout(() => btn.textContent = '共有', 2000);
+};
+setGender(gender);
+
 document.getElementById('pins').onclick = e => {
   const t = e.target;
   if (t.dataset.i !== undefined && pins[+t.dataset.i]) { const p = pins[+t.dataset.i]; map.setView([p.lat, p.lon], 11); setPoint(p.lat, p.lon, p.name); }
