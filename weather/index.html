@@ -89,10 +89,17 @@
   .card::before { content: ""; position: absolute; inset: 7px; border: 1px solid var(--lvfg); opacity: .35; pointer-events: none; }
   .card::after { content: attr(data-lv); position: absolute; right: 14px; bottom: -14px; font: 800 4rem/1 "Shippori Mincho", serif;
           color: var(--lvfg); opacity: .12; pointer-events: none; }
-  .card > svg { width: 92px; height: 345px; max-height: 300px; flex: none; }
+  .card > svg { width: 112px; height: auto; aspect-ratio: 84 / 216; flex: none; align-self: center; }
   .ot { min-width: 0; display: flex; flex-direction: column; gap: 6px; position: relative; z-index: 1; }
   .ot .ttl { font: 800 1.3rem/1.3 "Shippori Mincho", "Hiragino Mincho ProN", serif; color: var(--lvfg); letter-spacing: .04em; }
   .ot .desc { font-size: .85rem; line-height: 1.6; }
+  .note2 { display: inline-block; margin-top: 4px; font-size: .8rem; color: #5a4636; background: #ffffff8a; border-left: 3px solid var(--lvfg); padding: 3px 8px; }
+  .tl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; font-size: .8rem; font-variant-numeric: tabular-nums; }
+  .tl .tlh { grid-column: 1 / -1; font-size: .62rem; letter-spacing: .18em; color: #6b5d55; font-weight: 700; }
+  .tl > span:not(.tlh) { background: #ffffff8a; border-radius: 6px; padding: 4px 6px; text-align: center; font-weight: 700; }
+  .tl small { display: block; font-size: .62rem; font-weight: 600; color: #6b5d55; }
+  #outingBar { display: flex; gap: 8px; align-items: center; margin: -4px 0 14px; font-size: .82rem; color: var(--muted); flex-wrap: wrap; }
+  #outingBar select { font-size: 16px; padding: 4px 6px; border-radius: 8px; border: 1px solid #8886; background: var(--panel); color: var(--fg); }
   .items { list-style: none; margin: 2px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 6px; }
   .items li { font-size: .72rem; padding: 2px 8px; border: 1px solid #2f272333; border-radius: 99px; background: #ffffff70; }
   .ot .tmp { font-size: .75rem; color: #6b5d55; font-variant-numeric: tabular-nums; }
@@ -104,8 +111,8 @@
   .umb small { display: block; font-size: .6rem; letter-spacing: .2em; color: #6b5d55; font-weight: 600; }
   .umb .umbart { width: 22px; height: 64px; flex: none; }
   #hero .card { padding: 20px 18px 20px 6px; gap: 12px; }
-  #hero .card > svg { width: 112px; height: 420px; max-height: 380px; }
-  #hero .ttl { font-size: 1.55rem; }
+  #hero .card > svg { width: 132px; }
+  #hero .ttl { font-size: 1.35rem; }
   #hero .card::after { font-size: 6rem; bottom: -24px; }
   #hero .big { font-size: 2.6rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; color: var(--lvfg); }
   #hero .big small { font-size: 1rem; color: #6b5d55; font-weight: 600; margin-left: 6px; }
@@ -164,6 +171,7 @@
     <button id="pinBtn" class="ghost" aria-label="この地点をピン留め" title="ピン留め">☆</button>
   </header>
   <div id="pinbar"><div class="seg"><button id="gM" type="button">👨 男性</button><button id="gF" type="button">👩 女性</button></div><button id="shareBtn" type="button">共有</button></div>
+  <div id="outingBar"><label>出かける <select id="goH" aria-label="出かける時間"></select></label><span aria-hidden="true">→</span><label>帰る <select id="backH" aria-label="帰る時間"></select></label></div>
   <div id="hero"></div>
   <h2 class="sec">24時間の天気</h2>
   <div id="hours"></div>
@@ -184,6 +192,11 @@ L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 let frames = [], layers = {}, idx = 0, timer = null;
+// 外出時間（この端末に保存）
+let outing = { go: 8, back: 19 };
+try { outing = { ...outing, ...JSON.parse(localStorage.getItem('outing') || '{}') }; } catch {}
+const jstKey = d => new Date(d.getTime() + 9 * 3600e3).toISOString().slice(0, 13) + ':00'; // "YYYY-MM-DDTHH:00"（日本時間）
+
 const slider = document.getElementById('slider');
 
 function fmt(t) { // "20261122123500" (UTC) -> "21:35"
@@ -261,17 +274,25 @@ slider.oninput = () => show(+slider.value);
 const WX = c => c === 0 ? '☀️' : c <= 2 ? '🌤' : c === 3 ? '☁️' : c <= 48 ? '🌫' :
   c <= 67 || (c >= 80 && c <= 82) ? '🌧' : c <= 77 || c === 85 || c === 86 ? '🌨' : '⛈';
 
+const DAILY = 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max';
+const HOURLY = 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code';
+function parseWx(x) {
+  const h = x.hourly;
+  return { temp: x.current.temperature_2m, code: x.current.weather_code,
+    rain: x.daily.precipitation_probability_max[0] ?? 0, max: x.daily.temperature_2m_max[0], min: x.daily.temperature_2m_min[0],
+    wind: x.daily.wind_speed_10m_max[0] ?? 0, psum: x.daily.precipitation_sum[0] ?? 0,
+    h: { time: h.time, t: h.apparent_temperature || h.temperature_2m, air: h.temperature_2m, pp: h.precipitation_probability, pr: h.precipitation, code: h.weather_code } };
+}
 async function loadForecast(lat, lon, name) {
   document.getElementById('fcTitle').textContent = name;
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}` +
-    `&hourly=temperature_2m,precipitation_probability,weather_code&timezone=Asia%2FTokyo&forecast_hours=24` +
-    '&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max&forecast_days=1';
+    `&hourly=${HOURLY}&timezone=Asia%2FTokyo&forecast_days=2&current=temperature_2m,weather_code&daily=${DAILY}`;
   try {
     const x = await getJSON(url), d = x.hourly;
-    heroWx = { temp: x.current.temperature_2m, code: x.current.weather_code, rain: x.daily.precipitation_probability_max[0] ?? 0,
-      max: x.daily.temperature_2m_max[0], min: x.daily.temperature_2m_min[0], wind: x.daily.wind_speed_10m_max[0] ?? 0, psum: x.daily.precipitation_sum[0] ?? 0 };
+    heroWx = parseWx(x);
     renderHero();
-    document.getElementById('hours').innerHTML = d.time.map((t, i) => `
+    const i0 = Math.max(0, d.time.indexOf(jstKey(new Date())));
+    document.getElementById('hours').innerHTML = d.time.slice(i0, i0 + 24).map((t, k, _, i = i0 + k) => `
       <div class="h">${+t.slice(11, 13)}時<b>${WX(d.weather_code[i])}</b>
       ${Math.round(d.temperature_2m[i])}°<br><span class="p">${d.precipitation_probability[i] ?? '-'}%</span></div>`).join('');
   } catch (e) { document.getElementById('hours').textContent = '予報を取得できませんでした（' + (e.message || '通信エラー') + '）'; }
@@ -308,6 +329,12 @@ function setGender(g) {
   document.getElementById('gF').ariaPressed = g === 'F';
   renderPins();
 }
+['goH', 'backH'].forEach((id, k) => {
+  const sel = document.getElementById(id), key = k ? 'back' : 'go';
+  sel.innerHTML = Array.from({ length: 24 }, (_, h) => `<option value="${h}">${h}:00</option>`).join('');
+  sel.value = outing[key];
+  sel.onchange = () => { outing[key] = +sel.value; try { localStorage.setItem('outing', JSON.stringify(outing)); } catch {} renderPins(); };
+});
 document.getElementById('gM').onclick = () => setGender('M');
 document.getElementById('gF').onclick = () => setGender('F');
 
@@ -345,15 +372,47 @@ const LOOKS = {
     { title: 'ダウンで完全防寒', text: 'ダウンジャケットにマフラーと手袋を', sleeve: 'long', outer: 'down', outerC: '#283149', pants: '#2b2a2e', scarf: '#b5443c', gloves: '#b5443c', shoes: 'boot',
       items: ['ダウンジャケット', 'マフラー', '手袋', 'パンツ', 'ブーツ'] }]
 };
+// 出かける〜帰るまでの時間帯（すでに帰る時間を過ぎていたら明日）
+function outingWindow(w) {
+  const now = new Date(), nowH = +jstKey(now).slice(11, 13);
+  const span = (outing.back - outing.go + 24) % 24 || 24;
+  let startOff, label;
+  const endToday = (outing.go + span) - nowH; // 今日の出発から数えた帰宅までの残り時間
+  if (nowH < outing.go) { startOff = outing.go - nowH; label = '今日'; }
+  else if (endToday > 0) { startOff = 0; label = '外出中'; }
+  else { startOff = 24 - nowH + outing.go; label = '明日'; }
+  const len = label === '外出中' ? endToday : span;
+  const i0 = w.h.time.indexOf(jstKey(now));
+  if (i0 < 0) return null;
+  const idx = []; for (let k = startOff; k <= startOff + len && i0 + k < w.h.time.length; k++) idx.push(i0 + k);
+  if (idx.length < 2) return null;
+  const at = i => ({ h: +w.h.time[i].slice(11, 13), t: w.h.t[i], air: w.h.air[i], code: w.h.code[i] });
+  const ts = idx.map(i => w.h.t[i]);
+  return { label, go: at(idx[0]), back: at(idx.at(-1)), min: Math.min(...ts), max: Math.max(...ts),
+    peak: at(idx[ts.indexOf(Math.max(...ts))]),
+    pp: Math.max(...idx.map(i => w.h.pp[i] ?? 0)), pr: idx.reduce((a, i) => a + (w.h.pr[i] || 0), 0) };
+}
 function outfit(w) {
-  const feel = w.max - Math.max(0, w.wind - 18) / 6; // 風が強いと体感を下げる
-  const lv7 = feel >= 27 ? 1 : feel >= 22 ? 2 : feel >= 18 ? 3 : feel >= 15 ? 4 : feel >= 11 ? 5 : feel >= 6 ? 6 : 7;
-  const o = { ...LOOKS[gender][lv7], lv7, lv: [0, 1, 1, 2, 2, 3, 4, 5][lv7] };
+  const win = w.h ? outingWindow(w) : null;
+  // 体感温度で判断：外出中のいちばん寒い時間を重めに見る
+  const basis = win ? win.min + (win.max - win.min) * 0.3 : w.max - Math.max(0, w.wind - 18) / 6;
+  const lv7 = basis >= 25 ? 1 : basis >= 20 ? 2 : basis >= 16 ? 3 : basis >= 13 ? 4 : basis >= 9 ? 5 : basis >= 4 ? 6 : 7;
+  const o = { ...LOOKS[gender][lv7], lv7, lv: [0, 1, 1, 2, 2, 3, 4, 5][lv7], win };
   o.items = [...o.items];
-  if (w.max - w.min >= 10 && lv7 <= 3) { o.text += '。朝晩は冷えるので羽織りものを'; o.items.push('羽織りもの'); }
-  // 傘：雨が多い・確率が高いなら長傘、少しだけなら折りたたみ
-  if (w.rain >= 60 || (w.rain >= 40 && (w.psum ?? 0) >= 3)) o.umb = 'long';
-  else if (w.rain >= 30) o.umb = 'fold';
+  const notes = [];
+  if (win) {
+    const r = Math.round;
+    if (win.max - win.min >= 6) notes.push(`${win.peak.h}時ごろは${r(win.peak.air)}°まで上がるので、脱ぎ着しやすい重ね着がおすすめ`);
+    if (win.back.t <= win.go.t - 4) notes.push(`帰りの${win.back.h}時は${r(win.back.air)}°まで冷えるので、羽織りものを持って`);
+    else if (win.go.t <= win.back.t - 4) notes.push(`朝の${win.go.h}時は${r(win.go.air)}°と冷えるので、出かけるときは暖かめに`);
+    if (lv7 <= 3 && win.min < 16 && !o.outer) { notes.push('朝晩用にカーディガンを1枚'); o.items.push('羽織りもの'); }
+  } else if (w.max - w.min >= 10 && lv7 <= 3) { notes.push('朝晩は冷えるので羽織りものを'); o.items.push('羽織りもの'); }
+  o.note = notes.join('。');
+  // 傘：外出中の降水確率と雨量で、長傘か折りたたみか決める
+  const pp = win ? win.pp : w.rain, pr = win ? win.pr : (w.psum ?? 0);
+  if (pp >= 60 || (pp >= 40 && pr >= 3)) o.umb = 'long';
+  else if (pp >= 30) o.umb = 'fold';
+  o.pp = pp;
   return o;
 }
 const UMB = { long: '長傘を持って出かけよう', fold: '折りたたみ傘をカバンに' };
@@ -431,7 +490,8 @@ function figure(o) {
   // 前髪
   g += F ? P('M50 23 C49 10 57 7.5 61 7.5 C68 7.5 71.5 13 70.5 24 C68.5 17 64 13.5 58 15.5 C54.5 17 52 20 50 23 Z', hair)
          : P('M50.2 21 C49 10 56 7 61 7 C68 7 71.5 12 70 21 C67 14.5 58 13.5 52.5 17 Z', hair);
-  return `<svg viewBox="28 4 64 240" role="img" aria-label="${o.title}の服装イラスト"><g filter="url(#pen)">${g}</g></svg>`;
+  // 横に1.3倍、縦を0.9倍にして、細長くなりすぎないようにする
+  return `<svg viewBox="18 4 84 216" role="img" aria-label="${o.title}の服装イラスト"><g filter="url(#pen)"><g transform="translate(60 0) scale(1.3 .9) translate(-60 0)">${g}</g></g></svg>`;
 }
 // 傘のアイテムイラスト
 function umbArt(t) {
@@ -447,9 +507,13 @@ function cardHTML(w, o, hero) {
   return `<div class="card" data-lv="${Math.round(w.max)}°" style="--lvbg:${LV[o.lv][0]};--lvfg:${LV[o.lv][1]}">${figure(o)}
     <div class="ot">${hero ? `<span class="big">${WX(w.code)} ${Math.round(w.temp)}°<small>いま</small></span>` : ''}
     <span class="ttl">${o.title}</span>${warmBar(o.lv)}
-    <span class="desc">${o.text}</span>
+    <span class="desc">${o.text}${o.note ? `<br><span class="note2">${o.note}</span>` : ''}</span>
+    ${o.win ? `<div class="tl"><span class="tlh">${o.win.label === '外出中' ? '帰宅まで' : o.win.label + 'のお出かけ'}</span>
+      <span><small>${o.win.label === '外出中' ? 'いま' : '行き'} ${o.win.go.h}時</small>${WX(o.win.go.code)} ${Math.round(o.win.go.air)}°</span>
+      <span><small>最高 ${o.win.peak.h}時</small>${WX(o.win.peak.code)} ${Math.round(o.win.peak.air)}°</span>
+      <span><small>帰り ${o.win.back.h}時</small>${WX(o.win.back.code)} ${Math.round(o.win.back.air)}°</span></div>` : ''}
     <ul class="items">${o.items.map(t => `<li>${t}</li>`).join('')}</ul>
-    <span class="tmp">最高 <b>${Math.round(w.max)}°</b> / 最低 <b class="lo">${Math.round(w.min)}°</b>　降水 ${w.rain}%</span>
+    <span class="tmp">今日の最高 <b>${Math.round(w.max)}°</b> / 最低 <b class="lo">${Math.round(w.min)}°</b>　外出中の降水 ${o.pp}%</span>
     ${o.umb ? `<span class="umb ${o.umb}">${umbArt(o.umb)}<span><small>${o.umb === 'long' ? 'UMBRELLA' : 'FOLDING'}</small>${UMB[o.umb]}</span></span>` : ''}</div></div>`;
 }
 let heroWx = null;
@@ -474,16 +538,11 @@ async function loadPinWeather() {
   if (!pins.length) return;
   const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + pins.map(p => p.lat.toFixed(3)).join(',') +
     '&longitude=' + pins.map(p => p.lon.toFixed(3)).join(',') +
-    '&current=temperature_2m,weather_code&hourly=precipitation_probability&forecast_hours=1' +
-    '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max&forecast_days=1&timezone=Asia%2FTokyo';
+    `&current=temperature_2m,weather_code&hourly=${HOURLY}&daily=${DAILY}&forecast_days=2&timezone=Asia%2FTokyo`;
   try {
     let d = await getJSON(url);
     if (!Array.isArray(d)) d = [d];
-    pinWx = d.map(x => ({
-      temp: x.current.temperature_2m, code: x.current.weather_code,
-      rain: x.daily.precipitation_probability_max[0] ?? x.hourly.precipitation_probability[0],
-      max: x.daily.temperature_2m_max[0], min: x.daily.temperature_2m_min[0], wind: x.daily.wind_speed_10m_max[0] ?? 0, psum: x.daily.precipitation_sum[0] ?? 0
-    }));
+    pinWx = d.map(parseWx);
   } catch {}
   renderPins();
 }
@@ -494,7 +553,8 @@ document.getElementById('shareBtn').onclick = async () => {
   const text = '今日の服装（' + (gender === 'F' ? '女性' : '男性') + '）\n' + pins.map((p, i) => {
     const w = pinWx[i]; if (!w || w.max == null) return '';
     const o = outfit(w);
-    return `📍${p.name} ${WX(w.code)} ${Math.round(w.max)}°/${Math.round(w.min)}° 降水${w.rain}%\n👕 ${o.title}：${o.text}${o.umb ? '\n☂️ ' + UMB[o.umb] : ''}`;
+    const tl = o.win ? `\n🕗 行き${o.win.go.h}時 ${Math.round(o.win.go.air)}° → 帰り${o.win.back.h}時 ${Math.round(o.win.back.air)}°` : '';
+    return `📍${p.name} ${WX(w.code)} 最高${Math.round(w.max)}°/最低${Math.round(w.min)}°${tl}\n👕 ${o.title}：${o.text}${o.note ? '。' + o.note : ''}${o.umb ? '\n☂️ ' + UMB[o.umb] : ''}`;
   }).filter(Boolean).join('\n\n');
   try { if (navigator.share) { await navigator.share({ text }); return; } } catch (e) { if (e.name === 'AbortError') return; }
   try { await navigator.clipboard.writeText(text); btn.textContent = 'コピーしました'; }
