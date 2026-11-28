@@ -134,7 +134,8 @@
   #rpBadge{position:absolute;left:14px;top:52px;z-index:14;display:flex;align-items:center;gap:8px;padding:6px 14px 6px 10px;background:rgba(10,10,10,.65);border-left:4px solid #e5483b;color:#fff;transform:skewX(-10deg);pointer-events:auto;cursor:pointer}
   #rpBadge b{font:italic 900 20px system-ui;letter-spacing:.12em}
   #rpBadge span{font:800 11px system-ui;opacity:.8;animation:tBlink 1s infinite}
-  #rpBadge.hidden{display:none}
+  #rpBadge.hidden,#rpSkip.hidden{display:none}
+  #rpSkip{position:absolute;right:16px;top:52px;z-index:14;font:800 15px system-ui;padding:9px 18px;border-radius:999px;border:2px solid rgba(255,255,255,.8);background:rgba(10,10,10,.6);color:#fff;cursor:pointer}
   #gcard{position:absolute;inset:0;z-index:15;pointer-events:none;display:flex;align-items:center;justify-content:center;overflow:hidden;visibility:hidden}
   #gcard.show{visibility:visible}
   #gcard i{position:absolute;left:-10%;right:-10%;height:34%;top:33%;transform:skewY(-6deg) translateX(-110%)}
@@ -284,6 +285,7 @@
     <div class="pbtn" id="bCut">スライス</div>
   </div>
   <div id="rpBadge" class="hidden"><b>REPLAY</b><span>▶▶ SLOW</span></div>
+  <button id="rpSkip" class="hidden">スキップ ⏭</button>
   <div id="gcard"></div>
   <div id="rankOv" class="hidden"><div class="rkBox">
     <div class="rkHead"><b>RANKING</b><span>ランキング</span><button id="rkClose" aria-label="閉じる">✕</button></div>
@@ -677,7 +679,7 @@ function wipe(cb){
   t.onclick = e => { if (e.target.closest('a') || e.target.closest('#rankOv')) return; go(); };
   document.getElementById('tOnline').onclick = e => { e.preventDefault(); audio(); musicStart(); wipe(() => { t.classList.add('hidden'); menu.classList.remove('hidden'); setTimeout(() => document.getElementById('hostBtn').scrollIntoView({ block: 'center' }), 50); }); };
 }
-document.getElementById('rpBadge').onclick = () => { if (replay) replay.skip = true; };
+document.getElementById('rpBadge').onclick = document.getElementById('rpSkip').onclick = () => { if (replay) replay.skip = true; };
 { const b = document.getElementById('tMusic'), upd = () => { b.textContent = lsGet('tennis-music', '1') === '0' ? '♪ 音楽 OFF' : '♪ 音楽 ON'; }; upd();
   b.onclick = e => { e.stopPropagation(); audio(); const on = lsGet('tennis-music', '1') === '0'; lsSet('tennis-music', on ? '1' : '0'); upd(); if (on) musicStart(); else musicStop(); }; }
 document.getElementById('tRank').onclick = e => { e.preventDefault(); e.stopPropagation(); showRanking(); };
@@ -2560,12 +2562,13 @@ if (VIEWER) viewerSetup();
 let last = performance.now();
 function replayFrame(dt){
   const r = replay, el = document.getElementById('rpBadge');
-  if (!r.live) { r.live = { ps: players.map(p => RP_KEYS.map(k => p[k])), b: [ball.x, ball.y, ball.z], fov: camera.fov }; el.classList.remove('hidden'); msgEl.style.visibility = 'hidden'; }
+  if (!r.live) { r.live = { ps: players.map(p => RP_KEYS.map(k => p[k])), b: [ball.x, ball.y, ball.z], fov: camera.fov }; el.classList.remove('hidden'); document.getElementById('rpSkip').classList.remove('hidden'); msgEl.style.visibility = 'hidden'; }
+  if (serveRequest) { serveRequest = false; r.skip = true; } // スペースキーでも飛ばせる
   r.t += dt * 0.45;
   let acc = 0, i = 0; while (i < r.frames.length - 1 && acc + r.frames[i].dt < r.t) { acc += r.frames[i].dt; i++; }
   const f = r.frames[i], apply = (fr) => { players.forEach((p, j) => { const a = fr.ps[j]; if (a) RP_KEYS.forEach((k, n) => { p[k] = a[n]; }); }); ball.x = fr.b[0]; ball.y = fr.b[1]; ball.z = fr.b[2]; };
   apply(f);
-  if (r.t >= r.len || r.skip) { apply(r.live); camera.fov = r.live.fov; camera.updateProjectionMatrix(); replay = null; el.classList.add('hidden'); msgEl.style.visibility = ''; timer = 0.4; }
+  if (r.t >= r.len || r.skip) { apply(r.live); camera.fov = r.live.fov; camera.updateProjectionMatrix(); replay = null; el.classList.add('hidden'); document.getElementById('rpSkip').classList.add('hidden'); msgEl.style.visibility = ''; timer = 0.4; }
 }
 function replayCamera(){ // ボールの横からアップで追う
   if (!replay || replay.wait > 0 || !replay.live || !ball) return;
