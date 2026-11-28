@@ -76,7 +76,6 @@
   .h .p { color: var(--accent); }
   #legend { display: flex; gap: 2px; font-size: .65rem; color: var(--muted); align-items: center; }
   #legend i { width: 18px; height: 8px; display: inline-block; }
-  .leaflet-image-layer.model { image-rendering: auto; }
   .credit { font-size: .65rem; color: var(--muted); }
   #q { flex: 1; min-width: 0; font-size: 16px; padding: 8px 10px; border-radius: 8px;
        border: 1px solid var(--muted); background: var(--bg); color: var(--fg); }
@@ -190,15 +189,6 @@ function fmt(t) { // "20261122123500" (UTC) -> "21:35"
   return (day(d) !== day(new Date()) ? '翌' : '') + d.toLocaleTimeString('ja-JP', opt);
 }
 
-// ---- モデル予報（Open-Meteo / 気象庁MSM）を地図に色付けする ----
-const GRID = 7; // 7×7=49地点。Open-Meteo の利用回数上限に気をつけて少なめにする
-let model = null; // { bounds, times[], grid[point][hour] }
-function rainColor(mm) {
-  if (mm < 0.1) return null;
-  const s = [[1,'242,242,255'],[5,'160,210,255'],[10,'33,140,255'],[20,'0,65,255'],[30,'250,245,0'],[50,'255,153,0'],[80,'255,40,0']];
-  for (const [t, c] of s) if (mm < t) return c;
-  return '180,0,104';
-}
 async function getJSON(url) {
   const r = await fetch(url);
   if (!r.ok) {
@@ -207,32 +197,8 @@ async function getJSON(url) {
   }
   return r.json();
 }
-async function loadModel() {
-  // 30分以内に取得済みで、今の表示範囲が収まっていれば取り直さない
-  if (model && Date.now() - model.at < 30 * 60e3 && model.bounds.contains(map.getBounds())) return;
-  const b = map.getBounds().pad(0.5), pts = [];
-  for (let i = 0; i < GRID; i++) for (let j = 0; j < GRID; j++)
-    pts.push([b.getNorth() - (b.getNorth() - b.getSouth()) * (i + .5) / GRID, b.getWest() + (b.getEast() - b.getWest()) * (j + .5) / GRID]);
-  const url = 'https://api.open-meteo.com/v1/forecast?models=jma_seamless&hourly=precipitation&forecast_hours=26&timezone=GMT' +
-    '&latitude=' + pts.map(p => p[0].toFixed(2)).join(',') + '&longitude=' + pts.map(p => p[1].toFixed(2)).join(',');
-  let d = await getJSON(url);
-  if (!Array.isArray(d)) d = [d];
-  model = { at: Date.now(), bounds: b, times: d[0].hourly.time.map(t => t.replace(/[-T:]/g, '') + '00'), grid: d.map(x => x.hourly.precipitation) };
-}
-function modelLayer(f) {
-  const c = document.createElement('canvas'); c.width = c.height = GRID;
-  const g = c.getContext('2d'), img = g.createImageData(GRID, GRID), h = model.times.indexOf(f.validtime);
-  model.grid.forEach((series, k) => {
-    const col = rainColor(series[h] ?? 0);
-    if (col) { const [r, gg, bb] = col.split(',').map(Number); img.data.set([r, gg, bb, 255], k * 4); }
-  });
-  g.putImageData(img, 0, 0);
-  return L.imageOverlay(c.toDataURL(), model.bounds, { opacity: 0, className: 'model' }).addTo(map);
-}
-
 function layerFor(f) {
   const key = f.basetime + f.validtime;
-  if (!layers[key] && f.model) layers[key] = modelLayer(f);
   if (!layers[key]) {
     layers[key] = L.tileLayer(f.rasrf
       ? `https://www.jma.go.jp/bosai/jmatile/data/rasrf/${f.basetime}/none/${f.validtime}/surf/rasrf/{z}/{x}/{y}.png`
@@ -253,7 +219,7 @@ function show(i) {
   if (frames[i + 1]) layerFor(frames[i + 1]);
   document.getElementById('time').textContent = fmt(f.validtime);
   const tag = document.getElementById('tag');
-  tag.textContent = f.model ? 'モデル予報（粗い）' : f.rasrf ? '予測（1時間ごと）' : f.fc ? '予測' : '実況';
+  tag.textContent = f.rasrf ? '予測（1時間ごと）' : f.fc ? '予測' : '実況';
   tag.classList.toggle('fc', f.fc);
 }
 
@@ -274,12 +240,6 @@ async function loadRadar() {
       .map(f => ({ ...f, fc: true, rasrf: true }));
   } catch {}
   frames = [...past, ...fut, ...longFc];
-  // 気象庁データの先は、モデル予報で24時間先までつなげる
-  try {
-    await loadModel();
-    const last = frames.at(-1).validtime, end = new Date(Date.now() + 24 * 3600e3).toISOString().replace(/[-T:]/g, '').slice(0, 14);
-    frames.push(...model.times.filter(t => t > last && t <= end).map(t => ({ basetime: 'm', validtime: t, fc: true, model: true })));
-  } catch {}
   slider.max = frames.length - 1;
   show(past.length - 1); // 現在
 }
@@ -574,20 +534,6 @@ setPoint(35.68, 139.76, '東京');
 locate();
 // 予報の取得を先に済ませてから、レーダー（モデル予報を含む）を読み込む
 setTimeout(() => loadRadar().catch(() => { document.getElementById('time').textContent = '取得失敗'; }), 1500);
-// 地図を大きく動かしたらモデル予報を取り直す
-let moveT;
-map.on('moveend', () => {
-  clearTimeout(moveT);
-  moveT = setTimeout(async () => {
-    if (!model || model.bounds.contains(map.getBounds())) return;
-    if (Date.now() - model.at < 2 * 60e3) return; // 2分以内の取り直しはしない
-    try {
-      await loadModel();
-      for (const k in layers) if (k.startsWith('m')) { map.removeLayer(layers[k]); delete layers[k]; }
-      show(idx);
-    } catch {}
-  }, 800);
-});
 setInterval(() => { Object.values(layers).forEach(l => map.removeLayer(l)); layers = {}; loadRadar(); }, 5 * 60 * 1000);
 </script>
 </body>
