@@ -16,6 +16,36 @@
   html, body { height: 100%; margin: 0; }
   body { background: var(--bg); color: var(--fg); font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; }
   #map { position: absolute; inset: 0; }
+  #pages { position: fixed; inset: 0; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory;
+           scrollbar-width: none; overscroll-behavior-x: contain; }
+  #pages::-webkit-scrollbar { display: none; }
+  .page { flex: 0 0 100%; height: 100%; position: relative; scroll-snap-align: start; scroll-snap-stop: always; overflow: hidden; }
+  #p1 { overflow-y: auto; background: var(--bg); }
+  #edge { position: absolute; top: 0; bottom: 0; right: 0; width: 22px; z-index: 900; }
+  #tabs { position: fixed; z-index: 2000; left: 50%; transform: translateX(-50%); top: calc(8px + env(safe-area-inset-top));
+          display: flex; background: var(--panel); backdrop-filter: blur(8px); border-radius: 99px; padding: 3px; box-shadow: 0 4px 14px #0003; }
+  #tabs button { position: relative; z-index: 1; width: auto; height: 32px; padding: 0 14px; background: none; color: var(--muted);
+          font-size: .82rem; font-weight: 700; transition: color .25s; }
+  #tabs button[aria-selected="true"] { color: #fff; }
+  #tabInk { position: absolute; top: 3px; bottom: 3px; left: 3px; border-radius: 99px; background: var(--accent); transition: transform .3s, width .3s; }
+  #swipeHint { position: absolute; z-index: 1000; right: 12px; bottom: calc(150px + env(safe-area-inset-bottom)); font-size: .72rem;
+          background: var(--panel); color: var(--muted); padding: 4px 10px; border-radius: 99px; animation: hint 2.4s ease-in-out 3; }
+  @keyframes hint { 50% { transform: translateX(-8px); } }
+  .wrap { max-width: 560px; margin: 0 auto; padding-top: calc(60px + env(safe-area-inset-top)); padding-bottom: calc(32px + env(safe-area-inset-bottom));
+          padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+  .ph { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+  .place small { font-size: .72rem; color: var(--muted); letter-spacing: .08em; }
+  .place h1 { margin: 2px 0 0; font-size: 1.6rem; line-height: 1.2; text-wrap: balance; }
+  .sec { font-size: .78rem; letter-spacing: .1em; color: var(--muted); margin: 22px 0 8px; font-weight: 700; }
+  .note { font-size: .75rem; color: var(--muted); }
+  #pins:not(:empty) + #noPins { display: none; }
+  #hero .card { padding: 18px 16px 18px 8px; border-radius: 24px; gap: 14px; }
+  #hero .card > svg { width: 128px; height: 180px; }
+  #hero .ttl { font-size: 1.35rem; }
+  #hero .desc { font-size: .92rem; }
+  #hero .card::after { font-size: 6rem; bottom: -26px; }
+  #hero .big { font-size: 2.6rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; color: var(--lvfg); }
+  #hero .big small { font-size: 1rem; color: var(--muted); font-weight: 600; margin-left: 6px; }
   .panel {
     position: absolute; z-index: 1000; background: var(--panel); backdrop-filter: blur(6px);
     border-radius: 12px; box-shadow: 0 4px 16px #0003; padding: 10px 14px;
@@ -35,11 +65,12 @@
   }
   button:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
   #fc {
-    top: calc(10px + env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left));
+    top: calc(54px + env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left));
     max-width: min(360px, calc(100% - 20px)); box-sizing: border-box;
   }
   #fc h2 { margin: 0 0 6px; font-size: .9rem; color: var(--muted); font-weight: 600; }
-  #hours { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 4px; }
+  #hours { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; }
+  .h { background: var(--panel); border-radius: 12px; padding: 8px 6px; min-width: 44px; box-shadow: 0 1px 3px #0001; }
   .h { text-align: center; flex: none; font-variant-numeric: tabular-nums; font-size: .8rem; }
   .h b { display: block; font-size: 1.3rem; line-height: 1.4; }
   .h .p { color: var(--accent); }
@@ -52,9 +83,9 @@
   #results { list-style: none; margin: 0 0 8px; padding: 0; max-height: 40vh; overflow-y: auto; }
   #results li { padding: 8px 6px; border-bottom: 1px solid #8883; cursor: pointer; font-size: .9rem; }
   #results li:hover { background: #8882; }
-  #pins { list-style: none; margin: 0 0 8px; padding: 0; max-height: 55vh; overflow-y: auto; border-bottom: 1px solid #8883; }
+  #pins { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
   #pins:empty { display: none; }
-  #pins li { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: .85rem; font-variant-numeric: tabular-nums; }
+  #pins li { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: .95rem; font-weight: 600; font-variant-numeric: tabular-nums; }
   #pins .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
   #pins .wx { flex: none; } #pins .rp { flex: none; width: 3em; text-align: right; color: var(--accent); }
   #pins li { flex-wrap: wrap; }
@@ -62,10 +93,11 @@
           border-radius: 16px; background: var(--lvbg); position: relative; overflow: hidden; }
   .card::after { content: attr(data-lv); position: absolute; right: 10px; bottom: -14px; font-size: 3.6rem; font-weight: 800;
           color: var(--lvfg); opacity: .14; letter-spacing: -.04em; pointer-events: none; font-variant-numeric: tabular-nums; }
-  .card svg { width: 92px; height: 128px; flex: none; filter: drop-shadow(0 3px 4px #0002); }
+  .card { font-weight: 400; }
+  .card > svg { width: 116px; height: 162px; flex: none; filter: drop-shadow(0 3px 4px #0002); }
   .ot { min-width: 0; display: flex; flex-direction: column; gap: 4px; position: relative; z-index: 1; }
-  .ot .ttl { font-size: 1.05rem; font-weight: 800; line-height: 1.25; color: var(--lvfg); }
-  .ot .desc { font-size: .8rem; line-height: 1.5; }
+  .ot .ttl { font-size: 1.2rem; font-weight: 800; line-height: 1.25; color: var(--lvfg); }
+  .ot .desc { font-size: .85rem; line-height: 1.5; }
   .ot .tmp { font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
   .ot .tmp b { color: #e5533d; font-weight: 700; } .ot .tmp b.lo { color: #2f7bd8; }
   .warm { display: inline-flex; gap: 3px; align-items: center; font-size: .68rem; color: var(--muted); }
@@ -75,38 +107,34 @@
          padding: 3px 10px 3px 6px; border-radius: 99px; background: #2f7bd8; color: #fff; }
   .umb.fold { background: #fff; color: #2f7bd8; box-shadow: inset 0 0 0 1.5px #2f7bd8; }
   .umb svg { width: 16px; height: 16px; filter: none; }
-  #pinbar { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; font-size: .8rem; }
-  #pinbar:has(+ #pins:empty) { display: none; }
+  #pinbar { display: flex; gap: 6px; align-items: center; margin: 10px 0 12px; font-size: .8rem; }
   .seg { display: inline-flex; border-radius: 99px; background: #8882; padding: 2px; }
   .seg button { width: auto; height: 26px; padding: 0 10px; font-size: .78rem; background: none; color: var(--fg); }
   .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
   #shareBtn { width: auto; height: 26px; padding: 0 10px; font-size: .78rem; margin-left: auto; }
   #pins button, .ghost { background: none; color: var(--muted); width: 28px; height: 28px; font-size: .9rem; }
-  #pinBtn { color: #e0a800; font-size: 1.3rem; width: 32px; height: 32px; }
-  #fc h2 { margin-bottom: 0; }
-  #locate { position: absolute; right: max(10px, env(safe-area-inset-right)); top: calc(10px + env(safe-area-inset-top)); z-index: 1000; }
+  #pinBtn { color: #e0a800; font-size: 1.8rem; width: 44px; height: 44px; }
+  #locate { position: absolute; right: max(10px, env(safe-area-inset-right)); top: calc(110px + env(safe-area-inset-top)); z-index: 1000; }
 </style>
 </head>
 <body>
+<nav id="tabs" role="tablist">
+  <button id="t0" role="tab" aria-selected="true">雨雲レーダー</button>
+  <button id="t1" role="tab" aria-selected="false">天気と服装</button>
+  <span id="tabInk"></span>
+</nav>
+<main id="pages">
+<section class="page" id="p0" aria-label="雨雲レーダー">
 <div id="map"></div>
-
+<div id="edge" aria-hidden="true"></div>
 <button id="locate" title="現在地へ移動" aria-label="現在地へ移動">◎</button>
-
 <section id="fc" class="panel">
-  <form id="search" class="row" style="gap:6px;margin-bottom:8px">
+  <form id="search" class="row" style="gap:6px">
     <input id="q" type="search" placeholder="住所・地名で検索" aria-label="住所検索" autocomplete="off">
     <button type="submit" aria-label="検索" style="width:36px;height:36px">🔍</button>
   </form>
   <ul id="results" hidden></ul>
-  <div id="pinbar"><span>服装</span><div class="seg"><button id="gM" type="button">👨 男性</button><button id="gF" type="button">👩 女性</button></div><button id="shareBtn" type="button">共有</button></div>
-  <ul id="pins" aria-label="ピン留めした地点"></ul>
-  <div class="row" style="justify-content:space-between">
-    <h2 id="fcTitle">この場所の天気（読み込み中…）</h2>
-    <button id="pinBtn" class="ghost" aria-label="この地点をピン留め" title="ピン留め">☆</button>
-  </div>
-  <div id="hours"></div>
 </section>
-
 <section id="ctrl" class="panel">
   <div class="row">
     <button id="play" aria-label="再生">▶</button>
@@ -123,6 +151,26 @@
     <span class="credit">雨雲: 気象庁 / 予報: Open-Meteo</span>
   </div>
 </section>
+<div id="swipeHint">← スワイプで天気と服装</div>
+</section>
+
+<section class="page" id="p1" aria-label="天気と服装">
+ <div class="wrap">
+  <header class="ph">
+    <div class="place"><small>いま見ている場所</small><h1 id="fcTitle">読み込み中…</h1></div>
+    <button id="pinBtn" class="ghost" aria-label="この地点をピン留め" title="ピン留め">☆</button>
+  </header>
+  <div id="pinbar"><div class="seg"><button id="gM" type="button">👨 男性</button><button id="gF" type="button">👩 女性</button></div><button id="shareBtn" type="button">共有</button></div>
+  <div id="hero"></div>
+  <h2 class="sec">24時間の天気</h2>
+  <div id="hours"></div>
+  <h2 class="sec">ピン留めした場所</h2>
+  <ul id="pins" aria-label="ピン留めした地点"></ul>
+  <p id="noPins" class="note">レーダー画面で場所を検索して ☆ を押すと、ここに服装つきで並びます。</p>
+  <p class="note">雨雲: 気象庁 / 予報: Open-Meteo / 地図: 国土地理院</p>
+ </div>
+</section>
+</main>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -250,11 +298,15 @@ const WX = c => c === 0 ? '☀️' : c <= 2 ? '🌤' : c === 3 ? '☁️' : c <=
   c <= 67 || (c >= 80 && c <= 82) ? '🌧' : c <= 77 || c === 85 || c === 86 ? '🌨' : '⛈';
 
 async function loadForecast(lat, lon, name) {
-  document.getElementById('fcTitle').textContent = `${name}の天気`;
+  document.getElementById('fcTitle').textContent = name;
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}` +
-    `&hourly=temperature_2m,precipitation_probability,weather_code&timezone=Asia%2FTokyo&forecast_hours=24`;
+    `&hourly=temperature_2m,precipitation_probability,weather_code&timezone=Asia%2FTokyo&forecast_hours=24` +
+    '&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max&forecast_days=1';
   try {
-    const d = (await getJSON(url)).hourly;
+    const x = await getJSON(url), d = x.hourly;
+    heroWx = { temp: x.current.temperature_2m, code: x.current.weather_code, rain: x.daily.precipitation_probability_max[0] ?? 0,
+      max: x.daily.temperature_2m_max[0], min: x.daily.temperature_2m_min[0], wind: x.daily.wind_speed_10m_max[0] ?? 0, psum: x.daily.precipitation_sum[0] ?? 0 };
+    renderHero();
     document.getElementById('hours').innerHTML = d.time.map((t, i) => `
       <div class="h">${+t.slice(11, 13)}時<b>${WX(d.weather_code[i])}</b>
       ${Math.round(d.temperature_2m[i])}°<br><span class="p">${d.precipitation_probability[i] ?? '-'}%</span></div>`).join('');
@@ -375,18 +427,27 @@ function figure(o) {
 const umbIcon = t => `<svg viewBox="0 0 16 16"><path d="M1 8 Q8 0 15 8 Z" fill="currentColor"/><path d="M8 8 V13 q0 2 -2 1.5" fill="none" stroke="currentColor" stroke-width="1.6"/>${t === 'fold' ? '' : ''}</svg>`;
 const warmBar = lv => `<span class="warm" aria-label="上着の暖かさ ${lv}/5">暖かさ ${[1,2,3,4,5].map(n => `<i class="${n <= lv ? 'on' : ''}"></i>`).join('')}</span>`;
 
+function cardHTML(w, o, hero) {
+  return `<div class="card" data-lv="${Math.round(w.max)}°" style="--lvbg:${LV[o.lv][0]}88;--lvfg:${LV[o.lv][1]}">${figure(o)}
+    <div class="ot">${hero ? `<span class="big">${WX(w.code)} ${Math.round(w.temp)}°<small>いま</small></span>` : ''}
+    <span class="ttl">${o.title}</span>${warmBar(o.lv)}
+    <span class="desc">${o.text}</span>
+    <span class="tmp">最高 <b>${Math.round(w.max)}°</b> / 最低 <b class="lo">${Math.round(w.min)}°</b>　降水 ${w.rain}%</span>
+    ${o.umb ? `<span class="umb ${o.umb}">${umbIcon(o.umb)}${UMB[o.umb]}</span>` : ''}</div></div>`;
+}
+let heroWx = null;
+function renderHero() {
+  document.getElementById('hero').innerHTML = heroWx ? cardHTML(heroWx, outfit(heroWx), true) : '';
+}
 function renderPins() {
+  renderHero();
   document.getElementById('pins').innerHTML = pins.map((p, i) => {
     const w = pinWx[i], o = w && w.max != null ? outfit(w) : null;
     return `<li><span class="nm" data-i="${i}" title="${esc(p.name)}">📍${esc(p.name)}</span>
       <span class="wx">${w ? `${WX(w.code)} ${Math.round(w.temp)}°` : '…'}</span>
       <span class="rp">${w && w.rain != null ? w.rain + '%' : ''}</span>
       <button data-del="${i}" aria-label="${esc(p.name)}を削除">×</button>
-      ${o ? `<div class="card" data-lv="${Math.round(w.max)}°" style="--lvbg:${LV[o.lv][0]}88;--lvfg:${LV[o.lv][1]}">${figure(o)}
-        <div class="ot"><span class="ttl">${o.title}</span>${warmBar(o.lv)}
-        <span class="desc">${o.text}</span>
-        <span class="tmp">最高 <b>${Math.round(w.max)}°</b> / 最低 <b class="lo">${Math.round(w.min)}°</b>　降水 ${w.rain}%</span>
-        ${o.umb ? `<span class="umb ${o.umb}">${umbIcon(o.umb)}${UMB[o.umb]}</span>` : ''}</div></div>` : ''}</li>`;
+      ${o ? cardHTML(w, o) : ''}</li>`;
   }).join('');
 }
 // ピン留め地点の天気をまとめて取得
@@ -427,7 +488,7 @@ setGender(gender);
 
 document.getElementById('pins').onclick = e => {
   const t = e.target;
-  if (t.dataset.i !== undefined && pins[+t.dataset.i]) { const p = pins[+t.dataset.i]; map.setView([p.lat, p.lon], 11); setPoint(p.lat, p.lon, p.name); }
+  if (t.dataset.i !== undefined && pins[+t.dataset.i]) { const p = pins[+t.dataset.i]; map.setView([p.lat, p.lon], 11); setPoint(p.lat, p.lon, p.name); document.getElementById('p1').scrollTo({ top: 0, behavior: 'smooth' }); }
   if (t.dataset.del !== undefined) { pins.splice(+t.dataset.del, 1); pinWx.splice(+t.dataset.del, 1); savePins(); renderPins(); updatePinBtn(); }
 };
 document.getElementById('pinBtn').onclick = () => {
@@ -477,6 +538,37 @@ function locate() {
   }, () => {});
 }
 document.getElementById('locate').onclick = locate;
+
+// ---- フリックで画面切り替え ----
+const pages = document.getElementById('pages'), tabs = [document.getElementById('t0'), document.getElementById('t1')], ink = document.getElementById('tabInk');
+function goPage(i, smooth = true) { pages.scrollTo({ left: i * pages.clientWidth, behavior: smooth ? 'smooth' : 'auto' }); }
+function syncTabs() {
+  const i = Math.round(pages.scrollLeft / pages.clientWidth);
+  tabs.forEach((t, j) => t.ariaSelected = j === i);
+  ink.style.width = tabs[i].offsetWidth + 'px';
+  ink.style.transform = `translateX(${tabs[i].offsetLeft - 3}px)`;
+  try { localStorage.setItem('page', i); } catch {}
+}
+tabs.forEach((t, i) => t.onclick = () => goPage(i));
+pages.addEventListener('scroll', () => requestAnimationFrame(syncTabs), { passive: true });
+window.addEventListener('resize', () => { map.invalidateSize(); syncTabs(); });
+// 地図の上は地図の操作を優先し、右端のふちからのスワイプで次の画面へ
+let ex = null;
+const edge = document.getElementById('edge');
+edge.addEventListener('touchstart', e => ex = e.touches[0].clientX, { passive: true });
+edge.addEventListener('touchend', e => { if (ex != null && ex - e.changedTouches[0].clientX > 30) goPage(1); ex = null; });
+['fc', 'ctrl', 'swipeHint'].forEach(id => {
+  const el = document.getElementById(id); let sx = null, sy = null;
+  el.addEventListener('touchstart', e => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+  el.addEventListener('touchend', e => {
+    const dx = sx - e.changedTouches[0].clientX, dy = Math.abs(sy - e.changedTouches[0].clientY);
+    if (e.target.id !== 'slider' && dx > 60 && dy < 40) goPage(1); sx = null;
+  });
+});
+document.getElementById('swipeHint').onclick = () => goPage(1);
+L.DomEvent.disableScrollPropagation(document.getElementById('ctrl'));
+try { if (localStorage.getItem('page') === '1') requestAnimationFrame(() => goPage(1, false)); } catch {}
+requestAnimationFrame(syncTabs);
 
 setPoint(35.68, 139.76, '東京');
 locate();
