@@ -853,9 +853,9 @@ function tipHit(p, reach){
   hit(p, reach * 1.3);
   const s = sideSign(p.team), W2 = mode === 'doubles' ? DW : SW, q = Math.random(), z = Math.max(ball.z, 0.4);
   let tx, ty, t, tag;
-  if (q < 0.4) { tx = (Math.random() - .5) * 2 * (W2 + 4); ty = -s * (Math.random() < 0.5 ? 1 + Math.random() * 3 : 9 + Math.random() * 8); t = 0.7 + Math.random() * 0.4; tag = 'フレーム！'; }
-  else if (q < 0.75) { tx = (Math.random() - .5) * 2 * (W2 - 0.8); ty = -s * (2.5 + Math.random() * 5); t = 1.5 + Math.random() * 0.3; tag = 'ふんわり…'; }
-  else { tx = (Math.random() - .5) * 2 * (W2 + 1.6); ty = -s * (5 + Math.random() * 8); t = 0.8 + Math.random() * 0.3; tag = 'コントロールできない！'; }
+  if (q < 0.2) { tx = (Math.random() - .5) * 2 * (W2 + 4); ty = -s * (Math.random() < 0.5 ? 1 + Math.random() * 3 : 9 + Math.random() * 8); t = 0.7 + Math.random() * 0.4; tag = 'フレーム！'; }
+  else if (q < 0.8) { tx = (Math.random() - .5) * 2 * (W2 - 0.8); ty = -s * (2.5 + Math.random() * 5); t = 1.5 + Math.random() * 0.3; tag = 'ふんわり…'; }
+  else { tx = (Math.random() - .5) * 2 * (W2 + 0.6); ty = -s * (5 + Math.random() * 8); t = 0.8 + Math.random() * 0.3; tag = 'コントロールできない！'; }
   const v = launch(ball.x, ball.y, z, tx, ty, t); Object.assign(ball, v); ball.z = z; ball.curve = 0; ball.spin = null; ball.approach = false;
   p.lungeT = 0; p.lungeDir = Math.sign((ball.x - p.x) * s) || 1; p.tag = tag; p.label = 1.1;
   const sd = sideOf(p, ball.x); p.shot = (bounces === 0 && Math.abs(p.y) < 8) ? (sd === 'f' ? 'fvs' : 'bvs') : p.shot;
@@ -1301,16 +1301,16 @@ function hit(p, reach = 1.5){
     const center = lat0 < 0.35 ? (0.35 - lat0) / 0.35 : 0;
     const fast = Math.max(0, Math.min(1, (inSpd - 21) / 16));
     const pressure = Math.min(1, Math.max(quick, center * 0.8, fast) + 0.25 * (quick + center + fast - Math.max(quick, center, fast)));
-    if (Math.random() < pressure * 0.7 * (1.36 - 0.12 * stK(p, 'con')) * (slice ? 0.5 : 1) * (isVolley ? 1.3 - 0.1 * stK(p, 'vol') : 1)) { // スライスはミスが少ない // ミスの少なさで変わる
+    if (Math.random() < pressure * 0.5 * (1.36 - 0.12 * stK(p, 'con')) * (slice ? 0.5 : 1) * (isVolley ? 1.3 - 0.1 * stK(p, 'vol') : 1)) { // スライスはミスが少ない // ミスの少なさで変わる
       const q = Math.random();
       close = q < 0.45 ? 'ctrl' : q < 0.8 ? 'float' : 'net';
       rush = Math.max(rush, pressure);
     }
   }
   // 近くからのアプローチ（ネットへ詰めてくる強い球）を受けた時：相手が近くて焦り、ミスが出やすい
-  if (!close && !isSmash && ball.approach && Math.random() < 0.42 * (1.36 - 0.12 * stK(p, 'con'))) { const q = Math.random(); close = q < 0.45 ? 'ctrl' : q < 0.75 ? 'net' : 'float'; rush = Math.max(rush, 0.6); }
+  if (!close && !isSmash && ball.approach && Math.random() < 0.3 * (1.36 - 0.12 * stK(p, 'con'))) { const q = Math.random(); close = q < 0.45 ? 'ctrl' : q < 0.75 ? 'net' : 'float'; rush = Math.max(rush, 0.6); }
   if (close === 'ctrl') { tx += (Math.random() - .5) * 6 * rush; ty += -s * (Math.random() - .4) * 5 * rush; }
-  if ((jam > 0 && Math.random() < (0.25 + jam * 0.6) * (1.36 - 0.12 * stK(p, 'con')) * (slice ? 0.5 : 1)) || close === 'net' || close === 'wild' || (vsSmash && Math.random() < 0.4)) {
+  if ((jam > 0 && Math.random() < (0.15 + jam * 0.45) * (1.36 - 0.12 * stK(p, 'con')) * (slice ? 0.5 : 1)) || close === 'net' || close === 'wild' || (vsSmash && Math.random() < 0.4)) {
     if (close) jam = Math.max(jam, 0.7);
     if (vsSmash) jam = Math.max(jam, 0.9);
     mishit = true; jam = Math.max(jam, rush * 0.8);
@@ -1430,15 +1430,15 @@ function rpRecord(dt){
   rpBuf.push({ dt, b: [ball.x, ball.y, ball.z], ps: players.map(p => RP_KEYS.map(k => p[k])) }); if (rpBuf.length > 260) rpBuf.shift();
 }
 function rpStart(){
-  let tt = 0, i = rpBuf.length; while (i > 0 && tt < 2.2) { i--; tt += rpBuf[i].dt; }
+  let tt = 0, i = rpBuf.length; while (i > 0 && tt < 1.7) { i--; tt += rpBuf[i].dt; }
   const frames = rpBuf.slice(i); if (frames.length < 20) return;
-  replay = { frames, t: 0, wait: 0.9, len: tt, live: null }; rpBuf = [];
+  replay = { frames, t: 0, wait: 0.7, len: tt, live: null }; rpBuf = [];
 }
 let rec = null; // { won: 自分の取った点, lost: 取られた点, tech: Set }
 function techAdd(p, k){ if (rec && p && p.isHuman && !online) rec.tech.add(k); }
 function pointTo(team, reason){
   if (state === 'dead') return;
-  const goodPt = !online && team === myTeam() && lastHitter && lastHitter.team === team && (reason === 'サービスエース' || /強打|スマッシュ|エアK|アプローチ|ボレー|ナイス/.test((lastHitter.tag || '') + (lastHitter.shot || '').replace(/^(fv|bv|fvs|bvs|bvc)$/, 'ボレー').replace(/^sm$/, 'スマッシュ').replace(/^(jk|bjk)$/, 'エアK')) || rallyHits >= 9);
+  const goodPt = !online && team === myTeam() && lastHitter && lastHitter.team === team && (reason === 'サービスエース' || reason === 'ツーバウンド' || reason === 'エース'); // 自分たちのウィナー（相手のミスでの得点は除く）
   if (rec && !online) { if (team === myTeam()) { rec.won++; if (reason === 'サービスエース') rec.tech.add('ace'); } else rec.lost++; }
   state = 'dead'; timer = 1.6; ball.live = false;
   playCrowd(team === myTeam()); if (goodPt) setTimeout(() => { if (state === 'dead' && (score.pts[0] + score.pts[1]) > 0 && !replay) rpStart(); }, 0); showMsg(reason + '\n' + teamName(team) + 'のポイント' + (team === myTeam() ? '！' : ''), 1.6);
@@ -1654,7 +1654,7 @@ function update(dt){
     if (bounces === 0) reach *= ball.z > 2.9 ? 0.65 : 0.75;
     const d = Math.hypot(ball.x - p.x, ball.y - p.y);
     if (d < reach * (ball.smash ? 0.85 : 1) && ball.z < 3.3) { hit(p, reach); break; }
-    if (p.tipTry !== rallyHits && d < reach * 1.2 && ball.z < 2.6 && !ball.smash) { p.tipTry = rallyHits; if (Math.random() < 0.6) { tipHit(p, reach); break; } }
+    if (p.tipTry !== rallyHits && d < reach * 1.08 && ball.z < 2.6 && !ball.smash) { p.tipTry = rallyHits; if (Math.random() < 0.55) { tipHit(p, reach); break; } }
     // ギリギリで届かなかった球にも、ラケットを振る（空振り）
     if (p.whiff !== rallyHits && d < reach * 1.9 && ball.z < 3.3 && sideSign(p.team) * (ball.y - p.y) > 0.15 && sideSign(p.team) * ball.vy > 0) {
       p.whiff = rallyHits;
@@ -2561,7 +2561,7 @@ let last = performance.now();
 function replayFrame(dt){
   const r = replay, el = document.getElementById('rpBadge');
   if (!r.live) { r.live = { ps: players.map(p => RP_KEYS.map(k => p[k])), b: [ball.x, ball.y, ball.z], fov: camera.fov }; el.classList.remove('hidden'); msgEl.style.visibility = 'hidden'; }
-  r.t += dt * 0.38;
+  r.t += dt * 0.45;
   let acc = 0, i = 0; while (i < r.frames.length - 1 && acc + r.frames[i].dt < r.t) { acc += r.frames[i].dt; i++; }
   const f = r.frames[i], apply = (fr) => { players.forEach((p, j) => { const a = fr.ps[j]; if (a) RP_KEYS.forEach((k, n) => { p[k] = a[n]; }); }); ball.x = fr.b[0]; ball.y = fr.b[1]; ball.z = fr.b[2]; };
   apply(f);
