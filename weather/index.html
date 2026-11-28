@@ -134,7 +134,7 @@ function fmt(t) { // "20261122123500" (UTC) -> "21:35"
 }
 
 // ---- モデル予報（Open-Meteo / 気象庁MSM）を地図に色付けする ----
-const GRID = 14;
+const GRID = 7; // 7×7=49地点。Open-Meteo の利用回数上限に気をつけて少なめにする
 let model = null; // { bounds, times[], grid[point][hour] }
 function rainColor(mm) {
   if (mm < 0.1) return null;
@@ -142,15 +142,25 @@ function rainColor(mm) {
   for (const [t, c] of s) if (mm < t) return c;
   return '180,0,104';
 }
+async function getJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) {
+    let reason = ''; try { reason = (await r.json()).reason || ''; } catch {}
+    throw new Error(r.status === 429 ? 'アクセスが集中しています。1分ほど待ってから開き直してください' : `エラー ${r.status} ${reason}`);
+  }
+  return r.json();
+}
 async function loadModel() {
-  const b = map.getBounds().pad(0.3), pts = [];
+  // 30分以内に取得済みで、今の表示範囲が収まっていれば取り直さない
+  if (model && Date.now() - model.at < 30 * 60e3 && model.bounds.contains(map.getBounds())) return;
+  const b = map.getBounds().pad(0.5), pts = [];
   for (let i = 0; i < GRID; i++) for (let j = 0; j < GRID; j++)
     pts.push([b.getNorth() - (b.getNorth() - b.getSouth()) * (i + .5) / GRID, b.getWest() + (b.getEast() - b.getWest()) * (j + .5) / GRID]);
   const url = 'https://api.open-meteo.com/v1/forecast?models=jma_seamless&hourly=precipitation&forecast_hours=26&timezone=GMT' +
     '&latitude=' + pts.map(p => p[0].toFixed(2)).join(',') + '&longitude=' + pts.map(p => p[1].toFixed(2)).join(',');
-  let d = await (await fetch(url)).json();
+  let d = await getJSON(url);
   if (!Array.isArray(d)) d = [d];
-  model = { bounds: b, times: d[0].hourly.time.map(t => t.replace(/[-T:]/g, '') + '00'), grid: d.map(x => x.hourly.precipitation) };
+  model = { at: Date.now(), bounds: b, times: d[0].hourly.time.map(t => t.replace(/[-T:]/g, '') + '00'), grid: d.map(x => x.hourly.precipitation) };
 }
 function modelLayer(f) {
   const c = document.createElement('canvas'); c.width = c.height = GRID;
@@ -235,11 +245,11 @@ async function loadForecast(lat, lon, name) {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}` +
     `&hourly=temperature_2m,precipitation_probability,weather_code&timezone=Asia%2FTokyo&forecast_hours=24`;
   try {
-    const d = (await (await fetch(url)).json()).hourly;
+    const d = (await getJSON(url)).hourly;
     document.getElementById('hours').innerHTML = d.time.map((t, i) => `
       <div class="h">${+t.slice(11, 13)}時<b>${WX(d.weather_code[i])}</b>
       ${Math.round(d.temperature_2m[i])}°<br><span class="p">${d.precipitation_probability[i] ?? '-'}%</span></div>`).join('');
-  } catch { document.getElementById('hours').textContent = '予報を取得できませんでした'; }
+  } catch (e) { document.getElementById('hours').textContent = '予報を取得できませんでした（' + (e.message || '通信エラー') + '）'; }
 }
 
 let marker, current = null;
@@ -319,7 +329,7 @@ async function loadPinWeather() {
     '&current=temperature_2m,weather_code&hourly=precipitation_probability&forecast_hours=1' +
     '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max&forecast_days=1&timezone=Asia%2FTokyo';
   try {
-    let d = await (await fetch(url)).json();
+    let d = await getJSON(url);
     if (!Array.isArray(d)) d = [d];
     pinWx = d.map(x => ({
       temp: x.current.temperature_2m, code: x.current.weather_code,
@@ -400,13 +410,15 @@ document.getElementById('locate').onclick = locate;
 
 setPoint(35.68, 139.76, '東京');
 locate();
-loadRadar().catch(() => { document.getElementById('time').textContent = '取得失敗'; });
+// 予報の取得を先に済ませてから、レーダー（モデル予報を含む）を読み込む
+setTimeout(() => loadRadar().catch(() => { document.getElementById('time').textContent = '取得失敗'; }), 1500);
 // 地図を大きく動かしたらモデル予報を取り直す
 let moveT;
 map.on('moveend', () => {
   clearTimeout(moveT);
   moveT = setTimeout(async () => {
-    if (!model || model.bounds.contains(map.getBounds()) && map.getZoom() <= 9) return;
+    if (!model || model.bounds.contains(map.getBounds())) return;
+    if (Date.now() - model.at < 2 * 60e3) return; // 2分以内の取り直しはしない
     try {
       await loadModel();
       for (const k in layers) if (k.startsWith('m')) { map.removeLayer(layers[k]); delete layers[k]; }
