@@ -451,9 +451,10 @@ function figure(o) {
   // トップス
   const topC = o.top || o.dress;
   if (topC) {
-    g += P('M44 50 Q60 45 76 50 L72 104 L48 104 Z', topC);
+    // 袖を先に描き、胴体を上に重ねて、肩の内側に袖の線が出ないようにする
     if (o.sleeve === 'short') g += P('M44 50 C40 58 38 66 37 76 L46 77 C47 69 48 63 50 58 Z', topC) + P('M76 50 C80 58 82 66 83 76 L74 77 C73 69 72 63 70 58 Z', topC);
     if (o.sleeve === 'long') g += P(armL, topC) + P(armR, topC);
+    g += P('M44 50 Q60 45 76 50 L72 104 L48 104 Z', topC);
     if (o.collar) g += P('M55 47 L60 55 L52 56 Z', topC) + P('M65 47 L60 55 L68 56 Z', topC);
     if (o.dress) g += L('M50 100 Q60 103 70 100', .6);
   }
@@ -462,15 +463,15 @@ function figure(o) {
   // アウター
   if (o.outer === 'down') {
     const bot = F ? 196 : 118;
+    g += P('M43 49 C35 70 33 96 36 134 L46 134 C45 100 47 76 52 60 Z', o.outerC) + P('M77 49 C85 70 87 96 84 134 L74 134 C75 100 73 76 68 60 Z', o.outerC);
     g += P(`M41 48 Q60 42 79 48 L${F ? 84 : 79} ${bot} Q60 ${bot + 4} ${F ? 36 : 41} ${bot} Z`, o.outerC);
     for (let y = 62; y < bot - 4; y += 14) g += L(`M${42 - (y - 48) * (F ? .04 : 0)} ${y} Q60 ${y + 3} ${78 + (y - 48) * (F ? .04 : 0)} ${y}`, .5);
     g += L(`M60 46 L60 ${bot + 2}`, .5);
-    g += P('M43 49 C35 70 33 96 36 134 L46 134 C45 100 47 76 52 60 Z', o.outerC) + P('M77 49 C85 70 87 96 84 134 L74 134 C75 100 73 76 68 60 Z', o.outerC);
   } else if (o.outer) {
     const bot = { cardigan: 116, jacket: 122, trench: F ? 186 : 170, coat: F ? 182 : 176 }[o.outer];
     const spread = o.outer === 'cardigan' || o.outer === 'jacket' ? 0 : 6;
-    g += P(`M43 48 L56 46 L55 ${bot} L${41 - spread} ${bot} Z`, o.outerC) + P(`M77 48 L64 46 L65 ${bot} L${79 + spread} ${bot} Z`, o.outerC);
     g += P('M43 49 C37 70 35 96 37 134 L45 134 C44 100 46 76 51 60 Z', o.outerC) + P('M77 49 C83 70 85 96 83 134 L75 134 C76 100 74 76 69 60 Z', o.outerC);
+    g += P(`M43 48 L56 46 L55 ${bot} L${41 - spread} ${bot} Z`, o.outerC) + P(`M77 48 L64 46 L65 ${bot} L${79 + spread} ${bot} Z`, o.outerC);
     if (o.outer !== 'cardigan') g += P('M56 46 L50 62 L55 70 Z', o.outerC) + P('M64 46 L70 62 L65 70 Z', o.outerC);
     if (o.outer === 'trench') g += P(`M41 100 L56 100 L56 104 L40 104 Z`, o.outerC) + P(`M64 100 L80 100 L80 104 L64 104 Z`, o.outerC) + L('M46 60 L46 92 M74 60 L74 92', .4);
     if (o.outer === 'cardigan') g += [66, 80, 94, 108].map(y => `<circle cx="54" cy="${y}" r=".9" fill="${ink}" opacity=".5"/>`).join('');
